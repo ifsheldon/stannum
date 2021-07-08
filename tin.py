@@ -69,3 +69,56 @@ class TinFunc(torch.autograd.Function):
             if input_field.needs_grad:
                 gradient_tensors.append(input_field.field.grad.to_torch(device=ctx.tin_configs.device))
         return tuple(gradient_tensors)
+
+
+class Tin(torch.nn.Module):
+    def __init__(self, data_oriented, device: torch.device):
+        super().__init__()
+        if not hasattr(data_oriented, "_data_oriented"):
+            raise Exception("Requires a Taichi data-oriented instance")
+        self.data_oriented = data_oriented
+        self.input_fields = []
+        self.output_fields = []
+        assert device is not None
+        self.device = device
+        self.tin_func = TinFunc()
+        self.tin_configs = None
+        self.kernel_args = None
+        self.kernel_kwargs = None
+        self.finished = False
+
+    def register_input_field(self, field, needs_grad):
+        assert not self.finished
+        self.input_fields.append(TaichiField(field, True, needs_grad))
+        return self
+
+    def register_output_field(self, field, needs_grad):
+        assert not self.finished
+        self.output_fields.append(TaichiField(field, False, needs_grad))
+        return self
+
+    def set_kernel_args(self, *kernel_args):
+        self.kernel_args = kernel_args
+        if self.finished:
+            self.tin_configs.kernel_args = kernel_args
+
+    def set_kernel_kwargs(self, **kernel_kwargs):
+        self.kernel_kwargs = kernel_kwargs
+        if self.finished:
+            self.tin_configs.kernel_kwargs = kernel_kwargs
+
+    def finish(self):
+        assert len(self.input_fields) > 0
+        self.tin_configs = TinConfigs(self.data_oriented,
+                                      self.input_fields,
+                                      self.output_fields,
+                                      self.device,
+                                      self.kernel_args,
+                                      self.kernel_kwargs)
+        self.finished = True
+        return self
+
+    def forward(self, *input_tensors):
+        assert self.finished
+        # TODO
+        pass
