@@ -1,4 +1,4 @@
-# PyTin
+# Stannum
 
 PyTorch wrapper for Taichi data-oriented class
 
@@ -7,7 +7,7 @@ PyTorch wrapper for Taichi data-oriented class
 ## Usage
 
 ```python
-from pytin import Tin
+from stannum import Tin
 import torch
 
 data_oriented = TiClass()  # some Taichi data-oriented class 
