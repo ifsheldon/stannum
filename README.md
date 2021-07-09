@@ -29,8 +29,12 @@ For input and output:
 * The order of input tensors must match the registration order of `input_field`s.
 * The output order will align with the registration order of `output_field`s.
 
-## Dependencies
-Make sure you have:
+## Installation & Dependencies
+Install `stannum` with `pip` by 
+
+`python -m pip install stannum`
+
+Make sure you have the following installed:
 * PyTorch
 * Taichi
 
