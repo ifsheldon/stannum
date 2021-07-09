@@ -41,8 +41,9 @@ For input and output:
 * Set up CI pipeline
 
 ### Features
-
-* PyTorch checkpoint and save model
+* PyTorch-related:
+    * PyTorch checkpoint and save model
+    * Proxy `torch.nn.parameter.Parameter` for weight fields for optimizers
 
 ### Misc
 
