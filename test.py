@@ -1,22 +1,7 @@
-from typing import Any
-
 import taichi as ti
-import torch.random
+import torch
 
-import tin
-
-
-class FakeFunc(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, _input):
-        ctx._input = _input
-        return torch.ones(2).requires_grad_(True)
-
-    @staticmethod
-    def backward(ctx, *grad_outputs):
-        print("????")
-        return torch.ones(2)
+from tin import Tin
 
 
 @ti.data_oriented
@@ -35,27 +20,22 @@ class Multiplier:
 
 if __name__ == "__main__":
     ti.init(ti.cpu, default_fp=ti.f32)
-    multiplier = Multiplier(2.0)
-    multiplier_field = tin.TaichiField(multiplier.multiplier, True, True)
-    input_field = tin.TaichiField(multiplier.input_field, True, True)
-    output_field = tin.TaichiField(multiplier.output_field, False, True)
+    data_oriented = Multiplier(2.0)
     device = torch.device("cpu")
-    taichi_function = tin.TinFunc()
-    tin_configs = tin.TinConfigs(multiplier,
-                                 [multiplier_field, input_field],
-                                 [output_field],
-                                 device,
-                                 1.0
-                                 )
-    fake_func = FakeFunc()
+    tin_layer = Tin(data_oriented, device=device) \
+        .register_kernel(data_oriented.forward_kernel) \
+        .register_input_field(data_oriented.input_field, True) \
+        .register_output_field(data_oriented.output_field, True) \
+        .register_weight_field(data_oriented.multiplier, True, name="multiplier num") \
+        .finish()
+    tin_layer.set_kernel_args(1.0)
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
     print(f"data = {data_tensor}")
     w1 = torch.ones(2).requires_grad_(True).to(device)
     w2 = torch.tensor([2.0, 2.0]).requires_grad_(True).to(device)
     output1 = w1 * data_tensor
     print(f"output1 = {output1}")
-    # output2 = fake_func.apply(output1)
-    output2 = taichi_function.apply(tin_configs, multiplier.multiplier.to_torch(device=device), output1)
+    output2 = tin_layer(output1)
     output2.retain_grad()
     print(f"output2 = {output2}")
     output3 = output2 * w2
@@ -68,5 +48,5 @@ if __name__ == "__main__":
           f"w2 grad = {w2.grad}\n"
           f"output2 grad = {output2.grad}\n"
           f"data tensor grad = {data_tensor.grad}\n"
-          f"multiplier grad = {multiplier.multiplier.grad}"
+          f"multiplier grad = {data_oriented.multiplier.grad}"
           )

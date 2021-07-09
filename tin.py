@@ -1,28 +1,34 @@
-import taichi as ti
 import torch
+from enum import Enum
+
+
+class FieldType(Enum):
+    INPUT = 0
+    OUTPUT = 1
+    WEIGHTS = 2
 
 
 class TinConfigs:
     def __init__(self,
-                 data_oriented,
+                 ti_kernel,
                  input_fields,
+                 weight_fields,
                  output_fields,
                  device,
-                 *kernel_args,
-                 **kernel_kwargs):
-        self.data_oriented = data_oriented
+                 *kernel_args):
+        self.ti_kernel = ti_kernel
         self.input_fields: [TaichiField] = input_fields
+        self.weight_fields: [TaichiField] = weight_fields
         self.output_fields: [TaichiField] = output_fields
         self.kernel_args = kernel_args
-        self.kernel_kwargs = kernel_kwargs
         self.device: torch.device = device
 
 
 class TaichiField:
-    def __init__(self, field, is_input_field, needs_grad):
+    def __init__(self, field, field_type: FieldType, needs_grad: bool):
         self.field = field
         self.grad = field.grad
-        self.is_input_field = is_input_field
+        self.field_type = field_type
         self.needs_grad = needs_grad
 
     def from_torch(self, tensor):
@@ -39,12 +45,11 @@ class TinFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tin_configs, *input_tensors):
         ctx.tin_configs = tin_configs
-        for input_tensor, input_field in zip(input_tensors, tin_configs.input_fields):
-            input_field.from_torch(input_tensor)
-        if len(tin_configs.kernel_args) == 0:
-            tin_configs.data_oriented.forward_kernel()
-        else:
-            tin_configs.data_oriented.forward_kernel(*tin_configs.kernel_args)
+        all_input_fields = tin_configs.input_fields + tin_configs.weight_fields
+        assert len(input_tensors) == len(all_input_fields)
+        for input_tensor, field in zip(input_tensors, all_input_fields):
+            field.from_torch(input_tensor)
+        tin_configs.ti_kernel(*tin_configs.kernel_args)
         output_tensors = []
         for output_field in tin_configs.output_fields:
             output_tensor = output_field.to_torch(device=tin_configs.device).requires_grad_(True)
@@ -57,17 +62,18 @@ class TinFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        for grad_output, output_field in zip(grad_outputs, ctx.tin_configs.output_fields):
+        tin_configs = ctx.tin_configs
+        for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
             if output_field.needs_grad:
                 output_field.grad.from_torch(grad_output)
-        if len(ctx.tin_configs.kernel_args) == 0:
-            ctx.tin_configs.data_oriented.forward_kernel.grad()
-        else:
-            ctx.tin_configs.data_oriented.forward_kernel.grad(*ctx.tin_configs.kernel_args)
+        tin_configs.ti_kernel.grad(*tin_configs.kernel_args)
         gradient_tensors = [None]
-        for input_field in ctx.tin_configs.input_fields:
+        for input_field in tin_configs.input_fields:
             if input_field.needs_grad:
-                gradient_tensors.append(input_field.field.grad.to_torch(device=ctx.tin_configs.device))
+                gradient_tensors.append(input_field.grad.to_torch(device=tin_configs.device))
+        for weight_field in tin_configs.weight_fields:
+            if weight_field.needs_grad:
+                gradient_tensors.append(weight_field.grad.to_torch(device=tin_configs.device))
         return tuple(gradient_tensors)
 
 
@@ -78,47 +84,68 @@ class Tin(torch.nn.Module):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
         self.input_fields = []
+        self.weight_fields = {}
         self.output_fields = []
         assert device is not None
         self.device = device
         self.tin_func = TinFunc()
         self.tin_configs = None
+        self.kernel = None
         self.kernel_args = None
-        self.kernel_kwargs = None
         self.finished = False
 
     def register_input_field(self, field, needs_grad):
         assert not self.finished
-        self.input_fields.append(TaichiField(field, True, needs_grad))
+        self.input_fields.append(TaichiField(field, FieldType.INPUT, needs_grad))
         return self
 
     def register_output_field(self, field, needs_grad):
         assert not self.finished
-        self.output_fields.append(TaichiField(field, False, needs_grad))
+        self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
         return self
+
+    def register_weight_field(self, field, needs_grad, name=None, value=None):
+        assert not self.finished
+        field_name = name if name is not None else str(len(self.weight_fields))
+        if value is not None:
+            field.from_torch(value)
+        self.weight_fields[field_name] = TaichiField(field, FieldType.WEIGHTS, needs_grad)
+        return self
+
+    def register_kernel(self, kernel):
+        assert kernel is not None
+        if isinstance(kernel, str):
+            self.kernel = getattr(self.data_oriented, kernel)
+        else:
+            self.kernel = kernel
+        return self
+
+    def set_weight_field(self, field_name, tensor):
+        assert self.finished
+        if isinstance(field_name, int):
+            field_name = str(field_name)
+        assert field_name in self.weight_fields
+        self.weight_fields[field_name].from_torch(tensor)
 
     def set_kernel_args(self, *kernel_args):
         self.kernel_args = kernel_args
         if self.finished:
             self.tin_configs.kernel_args = kernel_args
 
-    def set_kernel_kwargs(self, **kernel_kwargs):
-        self.kernel_kwargs = kernel_kwargs
-        if self.finished:
-            self.tin_configs.kernel_kwargs = kernel_kwargs
-
     def finish(self):
         assert len(self.input_fields) > 0
-        self.tin_configs = TinConfigs(self.data_oriented,
+        assert len(self.output_fields) > 0
+        assert self.kernel is not None
+        self.tin_configs = TinConfigs(self.kernel,
                                       self.input_fields,
+                                      list(self.weight_fields.values()),
                                       self.output_fields,
                                       self.device,
-                                      self.kernel_args,
-                                      self.kernel_kwargs)
+                                      self.kernel_args)
         self.finished = True
         return self
 
     def forward(self, *input_tensors):
         assert self.finished
-        # TODO
-        pass
+        weight_tensors = tuple(field.to_torch(device=self.device) for field in self.weight_fields.values())
+        return self.tin_func.apply(self.tin_configs, *(input_tensors + weight_tensors))
