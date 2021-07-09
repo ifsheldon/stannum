@@ -1,7 +1,7 @@
 import taichi as ti
 import torch
 
-from tin import Tin
+from pytin import Tin
 
 
 @ti.data_oriented
