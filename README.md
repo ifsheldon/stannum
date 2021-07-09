@@ -16,7 +16,7 @@ tin_layer = Tin(data_oriented, device=device)
     .register_kernel(data_oriented.forward_kernel)
     .register_input_field(data_oriented.input_field, True)
     .register_output_field(data_oriented.output_field, True)
-    .register_weight_field(data_oriented.multiplier, True, name="field name")
+    .register_weight_field(data_oriented.weight_field, True, name="field name")
     .finish() # finish() is required to finish construction
 tin_layer.set_kernel_args(1.0)
 output = tin_layer(input_tensor)
@@ -58,8 +58,11 @@ Make sure you have the following installed:
   * @property for a data-oriented class as an alternative way to register
 * Taichi related:
   * Wait for Taichi to have native PyTorch tensor view to optimize performance
+  * Automatic Batching - waiting for upstream Taichi improvement
+    * workaround for now: do static manual batching, that is to extend fields with one more dimension for batching 
 * Self:
   * Allow registering multiple kernels in a call chain fashion
+    * workaround for now: combine kernels into a mega kernel using `@ti.complex_kernel` 
 
 ### Misc
 
