@@ -29,6 +29,11 @@ For input and output:
 * The order of input tensors must match the registration order of `input_field`s.
 * The output order will align with the registration order of `output_field`s.
 
+## Dependencies
+Make sure you have:
+* PyTorch
+* Taichi
+
 ## TODOs
 
 ### Documentation
@@ -46,6 +51,10 @@ For input and output:
   * Proxy `torch.nn.parameter.Parameter` for weight fields for optimizers
 * Python related:
   * @property for a data-oriented class as an alternative way to register
+* Taichi related:
+  * Wait for Taichi to have native PyTorch tensor view to optimize performance
+* Self:
+  * Allow registering multiple kernels in a call chain fashion
 
 ### Misc
 
