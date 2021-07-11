@@ -127,7 +127,7 @@ class EmptyTin(torch.nn.Module):
         assert not self.finished
         assert kernel is not None
         assert not isinstance(kernel, str)
-        kernel_bundle = TaichiKernelBundle(kernel, kernel_args)
+        kernel_bundle = TaichiKernelBundle(kernel, *kernel_args)
         assert kernel_bundle.name not in self.kernel_bundle_dict
         self.kernel_bundles.append(kernel_bundle)
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
