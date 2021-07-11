@@ -1,2 +1,3 @@
-from .stannum import Tin
-__all__ = ["Tin"]
+from .stannum import Tin, EmptyTin
+
+__all__ = ["Tin", "EmptyTin"]

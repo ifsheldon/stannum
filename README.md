@@ -22,7 +22,9 @@ tin_layer.set_kernel_args(1.0)
 output = tin_layer(input_tensor)
 ```
 
-Note: It is **NOT** necessary to have a `@ti.data_oriented` class as long as you correctly register the fields that your kernel needs for forward and backward calculation.
+Note: 
+
+It is **NOT** necessary to have a `@ti.data_oriented` class as long as you correctly register the fields that your kernel needs for forward and backward calculation. Please use `EmptyTin` in this case.
 
 For input and output:
 

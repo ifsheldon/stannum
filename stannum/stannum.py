@@ -77,12 +77,9 @@ class TinFunc(torch.autograd.Function):
         return tuple(gradient_tensors)
 
 
-class Tin(torch.nn.Module):
-    def __init__(self, data_oriented, device: torch.device):
+class EmptyTin(torch.nn.Module):
+    def __init__(self, device: torch.device):
         super().__init__()
-        if not hasattr(data_oriented, "_data_oriented"):
-            raise Exception("Requires a Taichi data-oriented instance")
-        self.data_oriented = data_oriented
         self.input_fields = []
         self.weight_fields = {}
         self.output_fields = []
@@ -113,11 +110,10 @@ class Tin(torch.nn.Module):
         return self
 
     def register_kernel(self, kernel):
+        assert not self.finished
         assert kernel is not None
-        if isinstance(kernel, str):
-            self.kernel = getattr(self.data_oriented, kernel)
-        else:
-            self.kernel = kernel
+        assert not isinstance(kernel, str)
+        self.kernel = kernel
         return self
 
     def set_weight_field(self, field_name, tensor):
@@ -149,3 +145,18 @@ class Tin(torch.nn.Module):
         assert self.finished
         weight_tensors = tuple(field.to_torch(device=self.device) for field in self.weight_fields.values())
         return self.tin_func.apply(self.tin_configs, *(input_tensors + weight_tensors))
+
+
+class Tin(EmptyTin):
+    def __init__(self, data_oriented, device: torch.device):
+        super(Tin, self).__init__(device=device)
+        if not hasattr(data_oriented, "_data_oriented"):
+            raise Exception("Requires a Taichi data-oriented instance")
+        self.data_oriented = data_oriented
+
+    def register_kernel(self, kernel):
+        if isinstance(kernel, str):
+            kernel = getattr(self.data_oriented, kernel)
+        assert kernel is not None
+        super(Tin, self).register_kernel(kernel)
+        return self
