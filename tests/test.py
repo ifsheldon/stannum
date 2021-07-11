@@ -1,32 +1,28 @@
 import taichi as ti
 import torch
 
-from stannum import Tin
+from stannum import EmptyTin
+
+ti.init(ti.cpu)
+multiplier = ti.field(ti.f32, (), needs_grad=True)
+input_field = ti.field(ti.f32, shape=2, needs_grad=True)
+output_field = ti.field(ti.f32, shape=2, needs_grad=True)
+multiplier[None] = 2.0
 
 
-@ti.data_oriented
-class Multiplier:
-    def __init__(self, multiplier):
-        self.multiplier = ti.field(ti.f32, (), needs_grad=True)
-        self.input_field = ti.field(ti.f32, shape=2, needs_grad=True)
-        self.output_field = ti.field(ti.f32, shape=2, needs_grad=True)
-        self.multiplier[None] = multiplier
-
-    @ti.kernel
-    def forward_kernel(self, num: float):
-        for i in self.input_field:
-            self.output_field[i] = self.multiplier[None] * self.input_field[i] + num
+@ti.kernel
+def forward_kernel(num: float):
+    for i in input_field:
+        output_field[i] = multiplier[None] * input_field[i] + num
 
 
 if __name__ == "__main__":
-    ti.init(ti.cpu, default_fp=ti.f32)
-    data_oriented = Multiplier(2.0)
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented, device=device) \
-        .register_kernel(data_oriented.forward_kernel, 1.0) \
-        .register_input_field(data_oriented.input_field, True) \
-        .register_output_field(data_oriented.output_field, True) \
-        .register_weight_field(data_oriented.multiplier, True, name="multiplier num") \
+    tin_layer = EmptyTin(device=device) \
+        .register_kernel(forward_kernel, 1.0) \
+        .register_input_field(input_field, True) \
+        .register_output_field(output_field, True) \
+        .register_weight_field(multiplier, True, name="multiplier num") \
         .finish()
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
     print(f"data = {data_tensor}")
@@ -47,5 +43,5 @@ if __name__ == "__main__":
           f"w2 grad = {w2.grad}\n"
           f"output2 grad = {output2.grad}\n"
           f"data tensor grad = {data_tensor.grad}\n"
-          f"multiplier grad = {data_oriented.multiplier.grad}"
+          f"multiplier grad = {multiplier.grad}"
           )
