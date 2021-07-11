@@ -22,6 +22,8 @@ tin_layer.set_kernel_args(1.0)
 output = tin_layer(input_tensor)
 ```
 
+Note: It is **NOT** necessary to have a `@ti.data_oriented` class as long as you correctly register the fields that your kernel needs for forward and backward calculation.
+
 For input and output:
 
 * We can register multiple `input_field`, `output_field`, `weight_field`.
@@ -57,12 +59,13 @@ Make sure you have the following installed:
 * Python related:
   * @property for a data-oriented class as an alternative way to register
 * Taichi related:
-  * Wait for Taichi to have native PyTorch tensor view to optimize performance
+  * Wait for Taichi to have native PyTorch tensor view to optimize performance(i.e., no need to copy data back and forth)
   * Automatic Batching - waiting for upstream Taichi improvement
     * workaround for now: do static manual batching, that is to extend fields with one more dimension for batching 
 * Self:
   * Allow registering multiple kernels in a call chain fashion
     * workaround for now: combine kernels into a mega kernel using `@ti.complex_kernel` 
+    * WIP in the branch `kernel_chain_impl`
 
 ### Misc
 
