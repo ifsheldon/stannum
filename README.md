@@ -14,9 +14,9 @@ data_oriented = TiClass()  # some Taichi data-oriented class
 device = torch.device("cpu")
 tin_layer = Tin(data_oriented, device=device)
     .register_kernel(data_oriented.forward_kernel)
-    .register_input_field(data_oriented.input_field, True)
-    .register_output_field(data_oriented.output_field, True)
-    .register_weight_field(data_oriented.weight_field, True, name="field name")
+    .register_input_field(data_oriented.input_field)
+    .register_output_field(data_oriented.output_field)
+    .register_weight_field(data_oriented.weight_field, name="field name")
     .finish() # finish() is required to finish construction
 tin_layer.set_kernel_args(1.0)
 output = tin_layer(input_tensor)

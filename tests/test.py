@@ -24,9 +24,9 @@ if __name__ == "__main__":
     device = torch.device("cpu")
     tin_layer = Tin(data_oriented, device=device) \
         .register_kernel(data_oriented.forward_kernel) \
-        .register_input_field(data_oriented.input_field, True) \
-        .register_output_field(data_oriented.output_field, True) \
-        .register_weight_field(data_oriented.multiplier, True, name="multiplier num") \
+        .register_input_field(data_oriented.input_field) \
+        .register_output_field(data_oriented.output_field) \
+        .register_weight_field(data_oriented.multiplier, name="multiplier num") \
         .finish()
     tin_layer.set_kernel_args(1.0)
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
