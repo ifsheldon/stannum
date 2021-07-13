@@ -86,7 +86,6 @@ class EmptyTin(torch.nn.Module):
         self.output_fields = []
         assert device is not None
         self.device = device
-        self.tin_func = TinFunc()
         self.tin_configs = None
         self.kernel = None
         self.kernel_args = None
@@ -148,7 +147,7 @@ class EmptyTin(torch.nn.Module):
     def forward(self, *input_tensors):
         assert self.finished
         weight_tensors = tuple(field.to_torch(device=self.device) for field in self.weight_fields.values())
-        return self.tin_func.apply(self.tin_configs, *(input_tensors + weight_tensors))
+        return TinFunc.apply(self.tin_configs, *(input_tensors + weight_tensors))
 
 
 class Tin(EmptyTin):
