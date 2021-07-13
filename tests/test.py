@@ -20,9 +20,9 @@ if __name__ == "__main__":
     device = torch.device("cpu")
     tin_layer = EmptyTin(device=device) \
         .register_kernel(forward_kernel, 1.0) \
-        .register_input_field(input_field, True) \
-        .register_output_field(output_field, True) \
-        .register_weight_field(multiplier, True, name="multiplier num") \
+        .register_input_field(input_field) \
+        .register_output_field(output_field) \
+        .register_weight_field(multiplier, name="multiplier num") \
         .finish()
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
     print(f"data = {data_tensor}")

@@ -1,5 +1,6 @@
 import torch
 from enum import Enum
+from .utils import check_field_needs_grad
 
 
 class FieldType(Enum):
@@ -105,19 +106,22 @@ class EmptyTin(torch.nn.Module):
         self.kernel_args = None
         self.finished = False
 
-    def register_input_field(self, field, needs_grad):
+    def register_input_field(self, field, needs_grad=None):
         assert not self.finished
+        needs_grad = check_field_needs_grad(field, needs_grad)
         self.input_fields.append(TaichiField(field, FieldType.INPUT, needs_grad))
         return self
 
-    def register_output_field(self, field, needs_grad):
+    def register_output_field(self, field, needs_grad=None):
         assert not self.finished
+        needs_grad = check_field_needs_grad(field, needs_grad)
         self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
         return self
 
-    def register_weight_field(self, field, needs_grad, name=None, value=None):
+    def register_weight_field(self, field, needs_grad=None, name=None, value=None):
         assert not self.finished
         field_name = name if name is not None else str(len(self.weight_fields))
+        needs_grad = check_field_needs_grad(field, needs_grad)
         if value is not None:
             field.from_torch(value)
         self.weight_fields[field_name] = TaichiField(field, FieldType.WEIGHTS, needs_grad)
