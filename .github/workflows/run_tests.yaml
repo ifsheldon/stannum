@@ -1,4 +1,4 @@
-name: stannum
+name: Gradient Tests
 
 on: [push]
 
