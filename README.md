@@ -49,10 +49,6 @@ Make sure you have the following installed:
 
 * Documentation for users
 
-### Engineering
-
-* Set up CI pipeline
-
 ### Features
 * PyTorch-related:
   * PyTorch checkpoint and save model
