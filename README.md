@@ -49,7 +49,6 @@ Make sure you have the following installed:
 
 * Code documentation
 * Documentation for users
-* Nicer error messages
 
 ### Engineering
 

@@ -84,7 +84,7 @@ class EmptyTin(torch.nn.Module):
         self.input_fields = []
         self.weight_fields = {}
         self.output_fields = []
-        assert device is not None
+        assert isinstance(device, torch.device), "device must be an instance of torch.device"
         self.device = device
         self.tin_configs = None
         self.kernel = None
@@ -92,19 +92,19 @@ class EmptyTin(torch.nn.Module):
         self.finished = False
 
     def register_input_field(self, field, needs_grad=None):
-        assert not self.finished
+        assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
         self.input_fields.append(TaichiField(field, FieldType.INPUT, needs_grad))
         return self
 
     def register_output_field(self, field, needs_grad=None):
-        assert not self.finished
+        assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
         self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
         return self
 
     def register_weight_field(self, field, needs_grad=None, name=None, value=None):
-        assert not self.finished
+        assert not self.finished, "Registration after .finish()"
         field_name = name if name is not None else str(len(self.weight_fields))
         needs_grad = check_field_needs_grad(field, needs_grad)
         if value is not None:
@@ -113,14 +113,14 @@ class EmptyTin(torch.nn.Module):
         return self
 
     def register_kernel(self, kernel):
-        assert not self.finished
-        assert kernel is not None
-        assert not isinstance(kernel, str)
+        assert not self.finished, "Registration after .finish()"
+        assert kernel is not None, "Kernel must not be None"
+        assert not isinstance(kernel, str), "Please pass the kernel function, not its name"
         self.kernel = kernel
         return self
 
     def set_weight_field(self, field_name, tensor):
-        assert self.finished
+        assert self.finished, "Fields for weights can only be set after finishing registrations"
         if isinstance(field_name, int):
             field_name = str(field_name)
         assert field_name in self.weight_fields
@@ -132,9 +132,9 @@ class EmptyTin(torch.nn.Module):
             self.tin_configs.kernel_args = kernel_args
 
     def finish(self):
-        assert len(self.input_fields) > 0
-        assert len(self.output_fields) > 0
-        assert self.kernel is not None
+        assert len(self.input_fields) > 0, "Must register at least 1 input field"
+        assert len(self.output_fields) > 0, "Must register at least 1 output field"
+        assert self.kernel is not None, "Kernel must not be None"
         self.tin_configs = TinConfigs(self.kernel,
                                       self.input_fields,
                                       list(self.weight_fields.values()),
@@ -145,7 +145,7 @@ class EmptyTin(torch.nn.Module):
         return self
 
     def forward(self, *input_tensors):
-        assert self.finished
+        assert self.finished, "Please finish registrations by calling .finish() before using this layer"
         weight_tensors = tuple(field.to_torch(device=self.device) for field in self.weight_fields.values())
         return TinFunc.apply(self.tin_configs, *(input_tensors + weight_tensors))
 
@@ -158,8 +158,10 @@ class Tin(EmptyTin):
         self.data_oriented = data_oriented
 
     def register_kernel(self, kernel):
+        assert kernel is not None, "Kernel must not be None"
         if isinstance(kernel, str):
+            kernel_name = kernel
             kernel = getattr(self.data_oriented, kernel)
-        assert kernel is not None
+            assert kernel is not None, f"Cannot find the kernel with the name {kernel_name}"
         super(Tin, self).register_kernel(kernel)
         return self
