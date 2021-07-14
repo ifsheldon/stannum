@@ -4,6 +4,12 @@ is_legacy_taichi = __ti_version < (0, 7, 26)
 
 
 def check_field_needs_grad(field, needs_grad):
+    """
+    Checks if the Taichi in use is new enough to support automatic grad configuration based on field.snode.needs_grad
+    :param field: a Taichi field
+    :param needs_grad: boolean or None
+    :return: boolean, whether a field needs gradients
+    """
     if needs_grad is None:
         if is_legacy_taichi:
             raise Exception(

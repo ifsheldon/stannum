@@ -47,7 +47,6 @@ Make sure you have the following installed:
 
 ### Documentation
 
-* Code documentation
 * Documentation for users
 
 ### Engineering

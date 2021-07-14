@@ -10,6 +10,10 @@ class FieldType(Enum):
 
 
 class TinConfigs:
+    """
+    A "struct" for storing objects needed in TinFunc
+    """
+
     def __init__(self,
                  ti_kernel,
                  input_fields,
@@ -26,6 +30,8 @@ class TinConfigs:
 
 
 class TaichiField:
+    """An extensive wrapper around Taichi field"""
+
     def __init__(self, field, field_type: FieldType, needs_grad: bool):
         self.field = field
         self.grad = field.grad
@@ -43,6 +49,8 @@ class TaichiField:
 
 
 class TinFunc(torch.autograd.Function):
+    """Customized autograd function used in Tin layers"""
+
     @staticmethod
     def forward(ctx, tin_configs, *input_tensors):
         ctx.tin_configs = tin_configs
@@ -79,7 +87,13 @@ class TinFunc(torch.autograd.Function):
 
 
 class EmptyTin(torch.nn.Module):
+    """A Taichi field wrapper that requires no @ti.data_oriented class"""
+
     def __init__(self, device: torch.device):
+        """
+        Init an EmptyTin instance
+        :param device: torch.device instance
+        """
         super().__init__()
         self.input_fields = []
         self.weight_fields = {}
@@ -92,18 +106,38 @@ class EmptyTin(torch.nn.Module):
         self.finished = False
 
     def register_input_field(self, field, needs_grad=None):
+        """
+        Register an input field which requires a tensor input in the forward calculation
+        :param field: Taichi field
+        :param needs_grad: whether the field needs grad, `None` for automatic configuration
+        :return: self
+        """
         assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
         self.input_fields.append(TaichiField(field, FieldType.INPUT, needs_grad))
         return self
 
     def register_output_field(self, field, needs_grad=None):
+        """
+        Register an output field that backs an output tensor in the forward calculation
+        :param field: Taichi field
+        :param needs_grad: whether the field needs grad, `None` for automatic configuration
+        :return: self
+        """
         assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
         self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
         return self
 
     def register_weight_field(self, field, needs_grad=None, name=None, value=None):
+        """
+        Register a field that serves as weights internally and whose values are required by the kernel function
+        :param field: Taichi field
+        :param needs_grad: whether the field needs grad, `None` for automatic configuration
+        :param name: name for the field, facilitating later value setting, `None` for default number naming
+        :param value: optional initial values from a tensor
+        :return: self
+        """
         assert not self.finished, "Registration after .finish()"
         field_name = name if name is not None else str(len(self.weight_fields))
         needs_grad = check_field_needs_grad(field, needs_grad)
@@ -113,6 +147,11 @@ class EmptyTin(torch.nn.Module):
         return self
 
     def register_kernel(self, kernel):
+        """
+        Register the kernel for forward calculation
+        :param kernel: Taichi kernel
+        :return: self
+        """
         assert not self.finished, "Registration after .finish()"
         assert kernel is not None, "Kernel must not be None"
         assert not isinstance(kernel, str), "Please pass the kernel function, not its name"
@@ -120,6 +159,12 @@ class EmptyTin(torch.nn.Module):
         return self
 
     def set_weight_field(self, field_name, tensor):
+        """
+        Sets the value of a weight field from a tensor
+        :param field_name: integer(when using default number naming) or string name
+        :param tensor: values for the field
+        :return: None
+        """
         assert self.finished, "Fields for weights can only be set after finishing registrations"
         if isinstance(field_name, int):
             field_name = str(field_name)
@@ -127,11 +172,20 @@ class EmptyTin(torch.nn.Module):
         self.weight_fields[field_name].from_torch(tensor)
 
     def set_kernel_args(self, *kernel_args):
+        """
+        Set args for the kernel
+        :param kernel_args: kernel arguments
+        :return: None
+        """
         self.kernel_args = kernel_args
         if self.finished:
             self.tin_configs.kernel_args = kernel_args
 
     def finish(self):
+        """
+        Finish all configurations and initializations
+        :return: self
+        """
         assert len(self.input_fields) > 0, "Must register at least 1 input field"
         assert len(self.output_fields) > 0, "Must register at least 1 output field"
         assert self.kernel is not None, "Kernel must not be None"
@@ -151,13 +205,25 @@ class EmptyTin(torch.nn.Module):
 
 
 class Tin(EmptyTin):
+    """A Taichi field wrapper that requires a @ti.data_oriented class for registering a kernel by name"""
+
     def __init__(self, data_oriented, device: torch.device):
+        """
+        Init a Tin instance
+        :param data_oriented: @ti.data_oriented class instance
+        :param device: torch.device instance
+        """
         super(Tin, self).__init__(device=device)
         if not hasattr(data_oriented, "_data_oriented"):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
 
     def register_kernel(self, kernel):
+        """
+        Register the kernel for forward calculation
+        :param kernel: kernel function or kernel name
+        :return: self
+        """
         assert kernel is not None, "Kernel must not be None"
         if isinstance(kernel, str):
             kernel_name = kernel
