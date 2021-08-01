@@ -13,13 +13,14 @@ import torch
 
 data_oriented = TiClass()  # some Taichi data-oriented class 
 device = torch.device("cpu")
+kernel_args = (1.0,)
 tin_layer = Tin(data_oriented, device=device)
-    .register_kernel(data_oriented.forward_kernel)
+    .register_kernel(data_oriented.forward_kernel, *kernel_args, kernel_name="forward")  # on old Taichi
+    # .register_kernel(data_oriented.forward_kernel, *kernel_args)  # on new Taichi
     .register_input_field(data_oriented.input_field)
     .register_output_field(data_oriented.output_field)
     .register_weight_field(data_oriented.weight_field, name="field name")
     .finish() # finish() is required to finish construction
-tin_layer.set_kernel_args(1.0)
 output = tin_layer(input_tensor)
 ```
 
@@ -58,11 +59,7 @@ Make sure you have the following installed:
 * Taichi related:
   * Wait for Taichi to have native PyTorch tensor view to optimize performance(i.e., no need to copy data back and forth)
   * Automatic Batching - waiting for upstream Taichi improvement
-    * workaround for now: do static manual batching, that is to extend fields with one more dimension for batching 
-* Self:
-  * Allow registering multiple kernels in a call chain fashion
-    * workaround for now: combine kernels into a mega kernel using `@ti.complex_kernel` 
-    * WIP in the branch `kernel_chain_impl`
+    * workaround for now: do static manual batching, that is to extend fields with one more dimension for batching
 
 ### Misc
 
