@@ -23,12 +23,11 @@ def test_grad_with_data_oriented_class():
     data_oriented = Multiplier(2.0)
     device = torch.device("cpu")
     tin_layer = Tin(data_oriented, device=device) \
-        .register_kernel(data_oriented.forward_kernel) \
+        .register_kernel(data_oriented.forward_kernel, 1.0, kernel_name="forward") \
         .register_input_field(data_oriented.input_field) \
         .register_output_field(data_oriented.output_field) \
         .register_weight_field(data_oriented.multiplier, name="multiplier num") \
         .finish()
-    tin_layer.set_kernel_args(1.0)
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
     w1 = torch.ones(2).requires_grad_(True).to(device)
     w2 = torch.tensor([2.0, 2.0]).requires_grad_(True).to(device)

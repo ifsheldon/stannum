@@ -1,6 +1,6 @@
 import torch
 from enum import Enum
-from .utils import check_field_needs_grad
+from .utils import check_field_needs_grad, autofill_kernel_name_available
 
 
 class FieldType(Enum):
@@ -15,18 +15,29 @@ class TinConfigs:
     """
 
     def __init__(self,
-                 ti_kernel,
+                 ti_kernel_bundles,
                  input_fields,
                  weight_fields,
                  output_fields,
-                 device,
-                 *kernel_args):
-        self.ti_kernel = ti_kernel
+                 device):
+        self.kernel_bundles = ti_kernel_bundles
         self.input_fields: [TaichiField] = input_fields
         self.weight_fields: [TaichiField] = weight_fields
         self.output_fields: [TaichiField] = output_fields
-        self.kernel_args = kernel_args
         self.device: torch.device = device
+
+
+class TaichiKernelBundle:
+    def __init__(self, kernel, kernel_name, *args):
+        self.kernel = kernel
+        self.name = kernel.__name__ if kernel_name is None else kernel_name
+        self.args = args
+
+    def forward(self):
+        self.kernel(*self.args)
+
+    def backward(self):
+        self.kernel.grad(*self.args)
 
 
 class TaichiField:
@@ -58,7 +69,8 @@ class TinFunc(torch.autograd.Function):
         assert len(input_tensors) == len(all_input_fields)
         for input_tensor, field in zip(input_tensors, all_input_fields):
             field.from_torch(input_tensor)
-        tin_configs.ti_kernel(*tin_configs.kernel_args)
+        for kernel_bundle in tin_configs.kernel_bundles:
+            kernel_bundle.forward()
         output_tensors = []
         for output_field in tin_configs.output_fields:
             output_tensor = output_field.to_torch(device=tin_configs.device).requires_grad_(True)
@@ -75,7 +87,8 @@ class TinFunc(torch.autograd.Function):
         for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
             if output_field.needs_grad:
                 output_field.grad.from_torch(grad_output)
-        tin_configs.ti_kernel.grad(*tin_configs.kernel_args)
+        for kernel_bundle in reversed(tin_configs.kernel_bundles):
+            kernel_bundle.backward()
         gradient_tensors = [None]
         for input_field in tin_configs.input_fields:
             if input_field.needs_grad:
@@ -101,7 +114,8 @@ class EmptyTin(torch.nn.Module):
         assert isinstance(device, torch.device), "device must be an instance of torch.device"
         self.device = device
         self.tin_configs = None
-        self.kernel = None
+        self.kernel_bundles = []
+        self.kernel_bundle_dict = {}
         self.kernel_args = None
         self.finished = False
 
@@ -146,16 +160,23 @@ class EmptyTin(torch.nn.Module):
         self.weight_fields[field_name] = TaichiField(field, FieldType.WEIGHTS, needs_grad)
         return self
 
-    def register_kernel(self, kernel):
+    def register_kernel(self, kernel, *kernel_args, kernel_name=None):
         """
-        Register the kernel for forward calculation
+        Register a kernel for forward calculation
         :param kernel: Taichi kernel
+        :param kernel_args: arguments for the kernel
+        :param kernel_name: kernel name, optional for new Taichi, compulsory for old Taichi
         :return: self
         """
         assert not self.finished, "Registration after .finish()"
         assert kernel is not None, "Kernel must not be None"
+        assert autofill_kernel_name_available(
+            kernel) or kernel_name is not None, "kernel has no __name__, please update your Taichi or specify its name"
         assert not isinstance(kernel, str), "Please pass the kernel function, not its name"
-        self.kernel = kernel
+        kernel_bundle = TaichiKernelBundle(kernel, kernel_name, *kernel_args)
+        assert kernel_bundle.name not in self.kernel_bundle_dict, "Kernel name not found"
+        self.kernel_bundles.append(kernel_bundle)
+        self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
     def set_weight_field(self, field_name, tensor):
@@ -171,15 +192,18 @@ class EmptyTin(torch.nn.Module):
         assert field_name in self.weight_fields
         self.weight_fields[field_name].from_torch(tensor)
 
-    def set_kernel_args(self, *kernel_args):
+    def set_kernel_args(self, kernel, *kernel_args):
         """
-        Set args for the kernel
-        :param kernel_args: kernel arguments
-        :return: None
+        Set args for a kernel
+        @param kernel: kernel function or its name
+        @param kernel_args: kernel arguments
         """
-        self.kernel_args = kernel_args
-        if self.finished:
-            self.tin_configs.kernel_args = kernel_args
+        if isinstance(kernel, str):
+            kernel_name = kernel
+        else:
+            kernel_name = kernel.__name__
+        assert kernel_name in self.kernel_bundle_dict, "Kernel not found, please register it first"
+        self.kernel_bundle_dict[kernel_name].args = kernel_args
 
     def finish(self):
         """
@@ -188,13 +212,12 @@ class EmptyTin(torch.nn.Module):
         """
         assert len(self.input_fields) > 0, "Must register at least 1 input field"
         assert len(self.output_fields) > 0, "Must register at least 1 output field"
-        assert self.kernel is not None, "Kernel must not be None"
-        self.tin_configs = TinConfigs(self.kernel,
+        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
+        self.tin_configs = TinConfigs(self.kernel_bundles,
                                       self.input_fields,
                                       list(self.weight_fields.values()),
                                       self.output_fields,
-                                      self.device,
-                                      self.kernel_args)
+                                      self.device)
         self.finished = True
         return self
 
@@ -218,16 +241,19 @@ class Tin(EmptyTin):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
 
-    def register_kernel(self, kernel):
+    def register_kernel(self, kernel, *kernel_args, kernel_name=None):
         """
-        Register the kernel for forward calculation
-        :param kernel: kernel function or kernel name
-        :return: self
+        Register a kernel for forward calculation
+        @param kernel: kernel function or kernel name
+        @param kernel_args: args for the kernel, optional
+        @param kernel_name: kernel name, optional for new Taichi, compulsory for old Taichi
+        @return: self
         """
         assert kernel is not None, "Kernel must not be None"
         if isinstance(kernel, str):
             kernel_name = kernel
             kernel = getattr(self.data_oriented, kernel)
             assert kernel is not None, f"Cannot find the kernel with the name {kernel_name}"
-        super(Tin, self).register_kernel(kernel)
+        assert autofill_kernel_name_available(kernel) or kernel_name is not None
+        super(Tin, self).register_kernel(kernel, *kernel_args, kernel_name=kernel_name)
         return self
