@@ -143,7 +143,7 @@ class EmptyTin(torch.nn.Module):
         self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
         return self
 
-    def register_weight_field(self, field, needs_grad=None, name=None, value=None):
+    def register_internal_field(self, field, needs_grad=None, name=None, value=None):
         """
         Register a field that serves as weights internally and whose values are required by the kernel function
         :param field: Taichi field

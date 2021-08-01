@@ -26,7 +26,7 @@ def test_grad_with_data_oriented_class():
         .register_kernel(data_oriented.forward_kernel, 1.0, kernel_name="forward") \
         .register_input_field(data_oriented.input_field) \
         .register_output_field(data_oriented.output_field) \
-        .register_weight_field(data_oriented.multiplier, name="multiplier num") \
+        .register_internal_field(data_oriented.multiplier, name="multiplier num") \
         .finish()
     data_tensor = torch.tensor([0.5, 0.5]).requires_grad_(True).to(device)
     w1 = torch.ones(2).requires_grad_(True).to(device)

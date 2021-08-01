@@ -19,7 +19,7 @@ tin_layer = Tin(data_oriented, device=device)
     # .register_kernel(data_oriented.forward_kernel, *kernel_args)  # on new Taichi
     .register_input_field(data_oriented.input_field)
     .register_output_field(data_oriented.output_field)
-    .register_weight_field(data_oriented.weight_field, name="field name")
+    .register_internal_field(data_oriented.weight_field, name="field name")
     .finish() # finish() is required to finish construction
 output = tin_layer(input_tensor)
 ```
