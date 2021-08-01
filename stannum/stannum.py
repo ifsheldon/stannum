@@ -1,6 +1,6 @@
 import torch
 from enum import Enum
-from .utils import check_field_needs_grad
+from .utils import check_field_needs_grad, autofill_kernel_name_available
 
 
 class FieldType(Enum):
@@ -24,9 +24,9 @@ class TinConfigs:
 
 
 class TaichiKernelBundle:
-    def __init__(self, kernel, *args):
+    def __init__(self, kernel, kernel_name, *args):
         self.kernel = kernel
-        self.name = kernel.__name__
+        self.name = kernel.__name__ if kernel_name is None else kernel_name
         self.args = args
 
     def forward(self):
@@ -127,11 +127,12 @@ class EmptyTin(torch.nn.Module):
         self.weight_fields[field_name] = TaichiField(field, FieldType.WEIGHTS, needs_grad)
         return self
 
-    def register_kernel(self, kernel, *kernel_args):
+    def register_kernel(self, kernel, *kernel_args, kernel_name=None):
         assert not self.finished
         assert kernel is not None
+        assert autofill_kernel_name_available(kernel) or kernel_name is not None
         assert not isinstance(kernel, str)
-        kernel_bundle = TaichiKernelBundle(kernel, *kernel_args)
+        kernel_bundle = TaichiKernelBundle(kernel, kernel_name, *kernel_args)
         assert kernel_bundle.name not in self.kernel_bundle_dict
         self.kernel_bundles.append(kernel_bundle)
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
@@ -177,9 +178,10 @@ class Tin(EmptyTin):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
 
-    def register_kernel(self, kernel, *kernel_args):
+    def register_kernel(self, kernel, *kernel_args, kernel_name=None):
         if isinstance(kernel, str):
             kernel = getattr(self.data_oriented, kernel)
         assert kernel is not None
-        super(Tin, self).register_kernel(kernel, *kernel_args)
+        assert autofill_kernel_name_available(kernel) or kernel_name is not None
+        super(Tin, self).register_kernel(kernel, *kernel_args, kernel_name=kernel_name)
         return self
