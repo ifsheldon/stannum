@@ -1,12 +1,5 @@
 import torch
-from enum import Enum
 from .utils import check_field_needs_grad, autofill_kernel_name_available
-
-
-class FieldType(Enum):
-    INPUT = 0
-    OUTPUT = 1
-    WEIGHTS = 2
 
 
 class TinConfigs:
@@ -43,10 +36,9 @@ class TaichiKernelBundle:
 class TaichiField:
     """An extensive wrapper around Taichi field"""
 
-    def __init__(self, field, field_type: FieldType, needs_grad: bool):
+    def __init__(self, field, needs_grad: bool):
         self.field = field
         self.grad = field.grad
-        self.field_type = field_type
         self.needs_grad = needs_grad
 
     def from_torch(self, tensor):
@@ -128,7 +120,7 @@ class EmptyTin(torch.nn.Module):
         """
         assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
-        self.input_fields.append(TaichiField(field, FieldType.INPUT, needs_grad))
+        self.input_fields.append(TaichiField(field, needs_grad))
         return self
 
     def register_output_field(self, field, needs_grad=None):
@@ -140,7 +132,7 @@ class EmptyTin(torch.nn.Module):
         """
         assert not self.finished, "Registration after .finish()"
         needs_grad = check_field_needs_grad(field, needs_grad)
-        self.output_fields.append(TaichiField(field, FieldType.OUTPUT, needs_grad))
+        self.output_fields.append(TaichiField(field, needs_grad))
         return self
 
     def register_internal_field(self, field, needs_grad=None, name=None, value=None):
@@ -157,7 +149,7 @@ class EmptyTin(torch.nn.Module):
         needs_grad = check_field_needs_grad(field, needs_grad)
         if value is not None:
             field.from_torch(value)
-        self.weight_fields[field_name] = TaichiField(field, FieldType.WEIGHTS, needs_grad)
+        self.weight_fields[field_name] = TaichiField(field, needs_grad)
         return self
 
     def register_kernel(self, kernel, *kernel_args, kernel_name=None):
