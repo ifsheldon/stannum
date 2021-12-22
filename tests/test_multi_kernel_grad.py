@@ -1,7 +1,7 @@
 import taichi as ti
 import torch
 
-from stannum import Tin
+from src.stannum import Tin
 
 
 @ti.data_oriented
@@ -48,6 +48,3 @@ def test_grad_with_data_oriented_class_multikernel():
     assert torch.allclose(w2.grad, torch.tensor(4.0))
     assert torch.allclose(data_tensor.grad, torch.tensor(8.0))
     assert torch.allclose(data_oriented.multiplier.grad.to_torch(device), torch.tensor(4.0))
-
-if __name__ == "__main__":
-    test_grad_with_data_oriented_class_multikernel()
