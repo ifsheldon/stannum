@@ -1,7 +1,11 @@
+from typing import Union, Callable
+
 from taichi import __version__ as __ti_version
+from taichi.lang.matrix import MatrixField
+from taichi.lang.field import ScalarField
 
 
-def check_field_needs_grad(field, needs_grad):
+def check_field_needs_grad(field: Union[MatrixField, ScalarField], needs_grad: Union[None, bool]):
     """
     Checks if the Taichi in use is new enough to support automatic grad configuration based on field.snode.needs_grad
     :param field: a Taichi field
@@ -19,7 +23,7 @@ def check_field_needs_grad(field, needs_grad):
     return needs_grad
 
 
-def autofill_kernel_name_available(kernel):
+def autofill_kernel_name_available(kernel: Callable):
     """
     check if the taichi implementation have func.__name__ in a @ti.kernel method of a @ti.data_oriented class
     @param kernel: a @ti.kernel function/method
