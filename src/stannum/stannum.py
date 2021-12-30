@@ -148,9 +148,13 @@ class TinFunc(torch.autograd.Function):
         for input_field in tin_configs.input_fields:
             if input_field.needs_grad:
                 gradient_tensors.append(input_field.grad_to_torch(device=tin_configs.device))
+            else:
+                gradient_tensors.append(None)
         for internal_field in tin_configs.internal_fields:
             if internal_field.needs_grad:
                 gradient_tensors.append(internal_field.grad_to_torch(device=tin_configs.device))
+            else:
+                gradient_tensors.append(None)
         return tuple(gradient_tensors)
 
 

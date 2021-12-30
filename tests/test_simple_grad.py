@@ -40,3 +40,34 @@ def test_grad_with_data_oriented_class():
     assert torch.allclose(w2.grad, torch.tensor(2.0))
     assert torch.allclose(data_tensor.grad, torch.tensor(4.0))
     assert torch.allclose(data_oriented.multiplier.grad.to_torch(device), torch.tensor(2.0))
+
+
+@ti.data_oriented
+class TiAdder:
+    def __init__(self):
+        self.arr0 = ti.field(ti.f32, shape=(2,), needs_grad=True)
+        self.arr1 = ti.field(ti.f32, shape=(2,), needs_grad=False)
+        self.arr_sum = ti.field(ti.f32, shape=(2,), needs_grad=True)
+
+    @ti.kernel
+    def add(self):
+        for i in self.arr0:
+            self.arr_sum[i] = self.arr0[i] + self.arr1[i]
+
+
+def test_grad_with_some_nongrad_field():
+    ti.init(ti.cpu)
+    data_oriented = TiAdder()
+    device = torch.device("cpu")
+    tin_layer = Tin(data_oriented, device) \
+        .register_kernel(data_oriented.add) \
+        .register_input_field(data_oriented.arr0) \
+        .register_input_field(data_oriented.arr1) \
+        .register_output_field(data_oriented.arr_sum) \
+        .finish()
+
+    a = torch.ones(2, requires_grad=True)
+    b = torch.ones(2)
+    l = tin_layer(a, b).sum()
+    l.backward()
+    assert torch.allclose(a.grad, torch.ones(2))
