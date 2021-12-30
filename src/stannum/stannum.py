@@ -15,7 +15,7 @@ class TinConfigs:
                  device):
         self.kernel_bundles = ti_kernel_bundles
         self.input_fields: [TaichiField] = input_fields
-        self.weight_fields: [TaichiField] = weight_fields
+        self.internal_fields: [TaichiField] = weight_fields
         self.output_fields: [TaichiField] = output_fields
         self.device: torch.device = device
 
@@ -57,7 +57,7 @@ class TinFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tin_configs, *input_tensors):
         ctx.tin_configs = tin_configs
-        all_input_fields = tin_configs.input_fields + tin_configs.weight_fields
+        all_input_fields = tin_configs.input_fields + tin_configs.internal_fields
         assert len(input_tensors) == len(all_input_fields)
         for input_tensor, field in zip(input_tensors, all_input_fields):
             field.from_torch(input_tensor)
@@ -85,9 +85,9 @@ class TinFunc(torch.autograd.Function):
         for input_field in tin_configs.input_fields:
             if input_field.needs_grad:
                 gradient_tensors.append(input_field.grad.to_torch(device=tin_configs.device))
-        for weight_field in tin_configs.weight_fields:
-            if weight_field.needs_grad:
-                gradient_tensors.append(weight_field.grad.to_torch(device=tin_configs.device))
+        for internal_field in tin_configs.internal_fields:
+            if internal_field.needs_grad:
+                gradient_tensors.append(internal_field.grad.to_torch(device=tin_configs.device))
         return tuple(gradient_tensors)
 
 
@@ -101,7 +101,7 @@ class EmptyTin(torch.nn.Module):
         """
         super().__init__()
         self.input_fields = []
-        self.weight_fields = {}
+        self.internal_fields = {}
         self.output_fields = []
         assert isinstance(device, torch.device), "device must be an instance of torch.device"
         self.device = device
@@ -145,11 +145,11 @@ class EmptyTin(torch.nn.Module):
         :return: self
         """
         assert not self.finished, "Registration after .finish()"
-        field_name = name if name is not None else str(len(self.weight_fields))
+        field_name = name if name is not None else str(len(self.internal_fields))
         needs_grad = check_field_needs_grad(field, needs_grad)
         if value is not None:
             field.from_torch(value)
-        self.weight_fields[field_name] = TaichiField(field, needs_grad)
+        self.internal_fields[field_name] = TaichiField(field, needs_grad)
         return self
 
     def register_kernel(self, kernel, *kernel_args, kernel_name=None):
@@ -171,9 +171,9 @@ class EmptyTin(torch.nn.Module):
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
-    def set_weight_field(self, field_name, tensor):
+    def set_internal_field(self, field_name, tensor):
         """
-        Sets the value of a weight field from a tensor
+        Sets the value of an internal field from a tensor
         :param field_name: integer(when using default number naming) or string name
         :param tensor: values for the field
         :return: None
@@ -181,8 +181,8 @@ class EmptyTin(torch.nn.Module):
         assert self.finished, "Fields for weights can only be set after finishing registrations"
         if isinstance(field_name, int):
             field_name = str(field_name)
-        assert field_name in self.weight_fields
-        self.weight_fields[field_name].from_torch(tensor)
+        assert field_name in self.internal_fields
+        self.internal_fields[field_name].from_torch(tensor)
 
     def set_kernel_args(self, kernel, *kernel_args):
         """
@@ -207,7 +207,7 @@ class EmptyTin(torch.nn.Module):
         assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
         self.tin_configs = TinConfigs(self.kernel_bundles,
                                       self.input_fields,
-                                      list(self.weight_fields.values()),
+                                      list(self.internal_fields.values()),
                                       self.output_fields,
                                       self.device)
         self.finished = True
@@ -215,7 +215,7 @@ class EmptyTin(torch.nn.Module):
 
     def forward(self, *input_tensors):
         assert self.finished, "Please finish registrations by calling .finish() before using this layer"
-        weight_tensors = tuple(field.to_torch(device=self.device) for field in self.weight_fields.values())
+        weight_tensors = tuple(field.to_torch(device=self.device) for field in self.internal_fields.values())
         return TinFunc.apply(self.tin_configs, *(input_tensors + weight_tensors))
 
 
