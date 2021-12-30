@@ -3,7 +3,7 @@
 
 PyTorch wrapper for Taichi data-oriented class
 
-**PRs are welcomed, please see TODOs.**
+**PRs are welcomed, please see TODOs and issues.**
 
 ## Usage
 
