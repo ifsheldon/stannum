@@ -1,7 +1,7 @@
 # Stannum
 ![Gradient Tests](https://github.com/ifsheldon/stannum/actions/workflows/run_tests.yaml/badge.svg)
 
-PyTorch wrapper for Taichi data-oriented class
+Fusing Taichi into PyTorch
 
 **PRs are welcomed, please see TODOs and issues.**
 
