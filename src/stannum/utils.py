@@ -1,6 +1,7 @@
 from typing import Union, Callable
 
 from taichi import __version__ as __ti_version
+from taichi.lang.kernel_impl import Kernel
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
 
@@ -31,3 +32,7 @@ def autofill_kernel_name_available(kernel: Callable):
     """
     is_legacy_taichi = __ti_version <= (0, 7, 26)
     return not is_legacy_taichi or hasattr(kernel, "__name__")
+
+
+def is_kernel(kernel):
+    return hasattr(kernel, "_adjoint") and isinstance(kernel._adjoint, Kernel)
