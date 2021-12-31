@@ -127,9 +127,14 @@ class TinFunc(torch.autograd.Function):
         for kernel_bundle in tin_configs.kernel_bundles:
             kernel_bundle.forward()
         output_tensors = []
+        non_grad_tensors = []
         for output_field in tin_configs.output_fields:
             output_tensor = output_field.to_torch(device=tin_configs.device).requires_grad_(output_field.needs_grad)
+            if not output_field.needs_grad:
+                non_grad_tensors.append(output_tensor)
             output_tensors.append(output_tensor)
+
+        ctx.mark_non_differentiable(*non_grad_tensors)
 
         if len(output_tensors) > 1:
             return tuple(output_tensors)
