@@ -1,5 +1,5 @@
 import torch
-from .utils import check_field_needs_grad, autofill_kernel_name_available
+from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel
 from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
@@ -249,8 +249,9 @@ class EmptyTin(torch.nn.Module):
         assert autofill_kernel_name_available(kernel) or kernel_name is not None, \
             "kernel has no __name__, please update your Taichi or specify its name"
         assert not isinstance(kernel, str), "Please pass the kernel function, not its name"
+        assert is_kernel(kernel), "Passed function is not a Taichi kernel"
         kernel_bundle = TaichiKernelBundle(kernel, kernel_name, *kernel_args)
-        assert kernel_bundle.name not in self.kernel_bundle_dict, "Kernel name not found"
+        assert kernel_bundle.name not in self.kernel_bundle_dict, f"Kernel name {kernel_bundle.name} already registered"
         self.kernel_bundles.append(kernel_bundle)
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
