@@ -9,7 +9,7 @@ class TaichiKernelBundle:
     def __init__(self, kernel: Callable, kernel_name: str, *args):
         self.kernel: Callable = kernel
         self.name: str = kernel.__name__ if kernel_name is None else kernel_name
-        self.args: Tuple[Any] = args
+        self.args: Tuple[Any, ...] = args
 
     def forward(self):
         self.kernel(*self.args)
