@@ -1,5 +1,5 @@
 import torch
-from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel
+from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, eprint
 from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
@@ -120,9 +120,8 @@ class TinFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tin_configs: TinConfigs, *input_tensors: torch.Tensor):
         ctx.tin_configs = tin_configs
-        all_input_fields = tin_configs.input_fields + tin_configs.internal_fields
-        assert len(input_tensors) == len(all_input_fields)
-        for input_tensor, field in zip(input_tensors, all_input_fields):
+        assert len(input_tensors) == len(tin_configs.input_fields)
+        for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
             field.from_torch(input_tensor)
         for kernel_bundle in tin_configs.kernel_bundles:
             kernel_bundle.forward()
@@ -155,11 +154,11 @@ class TinFunc(torch.autograd.Function):
                 gradient_tensors.append(input_field.grad_to_torch(device=tin_configs.device))
             else:
                 gradient_tensors.append(None)
-        for internal_field in tin_configs.internal_fields:
-            if internal_field.needs_grad:
-                gradient_tensors.append(internal_field.grad_to_torch(device=tin_configs.device))
-            else:
-                gradient_tensors.append(None)
+
+        if any(map(lambda x: x.needs_grad, tin_configs.internal_fields)):
+            eprint("Some internal fields require gradients.\n"
+                   "Although they got gradients during back propagation in the grad field,\n"
+                   "values of them will NOT be updated automatically")
         return tuple(gradient_tensors)
 
 
@@ -305,8 +304,7 @@ class EmptyTin(torch.nn.Module):
 
     def forward(self, *input_tensors: torch.Tensor):
         assert self.finished, "Please finish registrations by calling .finish() before using this layer"
-        weight_tensors = tuple(field.to_torch(device=self.device) for field in self.internal_fields.values())
-        return TinFunc.apply(self.tin_configs, *(input_tensors + weight_tensors))
+        return TinFunc.apply(self.tin_configs, *input_tensors)
 
 
 class Tin(EmptyTin):
