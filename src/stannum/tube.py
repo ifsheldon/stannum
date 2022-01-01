@@ -122,14 +122,16 @@ class Seal:
                  name: Optional[str] = None):
         assert dtype is not None, "dtype must not be None"
         # validate dims
-        batch_dim_started = True
+        if dims[0] is None:
+            assert len(dims) >= 2, "Dimensions must have one that's not batch dimension"
+            for i in range(1, len(dims)):
+                assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+        else:
+            for i in range(len(dims)):
+                assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+
         for i in dims:
-            if i == 0:
-                raise Exception(f"Dimension cannot be 0, got {dims}")
-            if not batch_dim_started and i is None:
-                raise Exception("You can only specify batch dimensions in the leading dimensions")
-            if batch_dim_started and i is not None:
-                batch_dim_started = False
+            assert i != 0, f"Dimension cannot be 0, got {dims}"
 
         self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
         if self.complex_dtype:
