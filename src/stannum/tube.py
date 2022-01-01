@@ -15,7 +15,7 @@ from .utils import is_kernel, autofill_kernel_name_available
 class FieldManager(ABC):
 
     @abstractmethod
-    def construct_field(self, concrete_tensor_shape: Tuple[int, ...]) \
+    def construct_field(self, concrete_tensor_shape: Tuple[int, ...], needs_grad: bool) \
             -> Tuple[SNodeTree, Union[ScalarField, MatrixField]]:
         pass
 
@@ -43,12 +43,12 @@ class DefaultFieldManager(FieldManager):
         self.complex_dtype = complex_dtype
         self.device = device
 
-    def construct_field(self, concrete_tensor_shape: Tuple[int, ...]) -> Tuple[
+    def construct_field(self, concrete_tensor_shape: Tuple[int, ...], needs_grad: bool) -> Tuple[
         SNodeTree, Union[ScalarField, MatrixField]]:
         if self.complex_dtype:
-            field = ti.Vector.field(2, dtype=self.dtype)
+            field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
         else:
-            field = ti.field(self.dtype)
+            field = ti.field(self.dtype, needs_grad=needs_grad)
 
         fb = ti.FieldsBuilder()
         fb.dense(axes(range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
@@ -86,12 +86,13 @@ class Seal:
                      concrete_tensor_shape: Tuple[int, ...],
                      field_manager: FieldManager,
                      complex_dtype: bool,
+                     requires_grad: bool,
                      device: torch.device,
                      name: str):
             assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
             if field_manager is None:
-                field_manager = DefaultFieldManager(dtype, complex_dtype)
-            snode_handle, field = field_manager.construct_field(concrete_tensor_shape)
+                field_manager = DefaultFieldManager(dtype, complex_dtype, device)
+            snode_handle, field = field_manager.construct_field(concrete_tensor_shape, requires_grad)
             assert field is not None and snode_handle is not None
             self.complex_dtype = complex_dtype
             self.field = field
@@ -145,8 +146,10 @@ class Seal:
         self.concrete_field = None
         self.snode_handle = None
 
-    def concretize(self, concrete_shape: Tuple[int, ...], device: torch.device):
-        return Seal.ConcreteField(self.dtype, concrete_shape, self.field_manager, self.complex_dtype, device, self.name)
+    def concretize(self, concrete_shape: Tuple[int, ...], device: torch.device, needs_grad: bool):
+        return Seal.ConcreteField(self.dtype, concrete_shape, self.field_manager, self.complex_dtype,
+                                  needs_grad if self.requires_grad is None else self.requires_grad,
+                                  device, self.name)
 
 
 class TubeKernelBundle:
@@ -226,7 +229,7 @@ class Tube(torch.nn.Module):
                                dims: Iterable[int],
                                dtype: torch.dtype,
                                name: str,
-                               requires_grad: Optional[bool] = None,
+                               requires_grad: bool,
                                field_manager: Optional[FieldManager] = None):
         assert not self._finished, "Try to register output tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
@@ -234,6 +237,7 @@ class Tube(torch.nn.Module):
         assert len(dims) > 0, "Output tensor must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
+        assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
         assert not any(map(lambda d: d == -1, dims)), \
             "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
         seal = Seal(dtype, *dims,
@@ -248,7 +252,7 @@ class Tube(torch.nn.Module):
                                     dims: Iterable[int],
                                     ti_dtype: TiDataType,
                                     name: str,
-                                    requires_grad: Optional[bool] = None,
+                                    requires_grad: bool,
                                     field_manager: Optional[FieldManager] = None):
         assert not self._finished, "Try to register intermediate field after .finish()"
         assert ti_dtype is not None, "dtype cannot be None"
@@ -256,6 +260,7 @@ class Tube(torch.nn.Module):
         assert len(dims) > 0, "Intermediate field must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
+        assert requires_grad is not None, "requires_grad cannot be None when registering an intermediate field"
         assert not any(map(lambda d: d == -1, dims)), \
             "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
         seal = Seal(ti_dtype, *dims,
