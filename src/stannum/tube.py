@@ -212,12 +212,12 @@ class Tube(torch.nn.Module):
         assert len(dims) > 0, "Input tensor must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
-        self.input_placeholders.append(
-            Seal(dtype, *dims,
-                 field_manager=field_manager,
-                 requires_grad=requires_grad,
-                 name=name)
-        )
+        seal = Seal(dtype, *dims,
+                    field_manager=field_manager,
+                    requires_grad=requires_grad,
+                    name=name)
+        self.input_placeholders.append(seal)
+        self.seals[name] = seal
         return self
 
     def register_output_tensor(self,
@@ -236,7 +236,7 @@ class Tube(torch.nn.Module):
                     field_manager=field_manager,
                     requires_grad=requires_grad,
                     name=name)
-        self.input_placeholders.append(seal)
+        self.output_placeholders.append(seal)
         self.seals[name] = seal
         return self
 
