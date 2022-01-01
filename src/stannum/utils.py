@@ -1,9 +1,14 @@
+import sys
 from typing import Union, Callable
 
 from taichi import __version__ as __ti_version
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
+
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 
 def check_field_needs_grad(field: Union[MatrixField, ScalarField], needs_grad: Union[None, bool]):
