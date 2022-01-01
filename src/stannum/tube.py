@@ -234,6 +234,8 @@ class Tube(torch.nn.Module):
         assert len(dims) > 0, "Output tensor must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
+        assert not any(map(lambda d: d == -1, dims)), \
+            "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
         seal = Seal(dtype, *dims,
                     field_manager=field_manager,
                     requires_grad=requires_grad,
@@ -254,6 +256,8 @@ class Tube(torch.nn.Module):
         assert len(dims) > 0, "Intermediate field must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
+        assert not any(map(lambda d: d == -1, dims)), \
+            "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
         seal = Seal(ti_dtype, *dims,
                     field_manager=field_manager,
                     requires_grad=requires_grad,
