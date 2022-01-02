@@ -116,7 +116,8 @@ class Seal:
             self.field_manager.grad_from_tensor(self.field, tensor)
 
         def __del__(self):
-            self.snode_handle.destroy()
+            if hasattr(self, "snode_handle"):  # in case of exception raised in __init__
+                self.snode_handle.destroy()
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
                  *dims: int,
