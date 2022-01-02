@@ -164,7 +164,8 @@ class TubeKernelBundle:
 
     def forward(self, seal_name_to_concrete_field: Dict[str, Seal.ConcreteField]):
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
-        self.kernel(*concrete_fields)
+        ti_fields = map(lambda x: x.field, concrete_fields)
+        self.kernel(*ti_fields)
 
     def backward(self):
         # TODO
@@ -273,8 +274,7 @@ class Tube(torch.nn.Module):
         return self
 
     def forward(self, *input_tensors: torch.Tensor):
-        # TODO: nn.Module forward
-        pass
+        return TubeFunc.apply(self, *input_tensors)
 
 
 def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
@@ -398,7 +398,10 @@ class TubeFunc(torch.autograd.Function):
             kernel_bundle.forward(seal_name_to_concrete_fields)
 
         output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
-        return output_tensors
+        if len(output_tensors) == 1:
+            return output_tensors[0]
+        else:
+            return output_tensors
 
     @staticmethod
     @once_differentiable
