@@ -53,7 +53,7 @@ class DefaultFieldManager(FieldManager):
             field = ti.field(self.dtype, needs_grad=needs_grad)
 
         fb = ti.FieldsBuilder()
-        fb.dense(axes(range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
+        fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
         snode_handle = fb.finalize()
         return snode_handle, field
 
