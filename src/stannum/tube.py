@@ -117,7 +117,7 @@ class Seal:
             self.field_manager.from_tensor(self.field, tensor)
 
         def grad_from_tensor(self, tensor):
-            self.field_manager.grad_from_tensor(self.field, tensor)
+            self.field_manager.grad_from_tensor(self.field.grad, tensor)
 
         def __del__(self):
             if hasattr(self, "snode_handle"):  # in case of exception raised in __init__
