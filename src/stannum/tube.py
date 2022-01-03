@@ -167,9 +167,10 @@ class TubeKernelBundle:
         ti_fields = map(lambda x: x.field, concrete_fields)
         self.kernel(*ti_fields)
 
-    def backward(self):
-        # TODO
-        pass
+    def backward(self, seal_name_to_concrete_field: Dict[str, Seal.ConcreteField]):
+        concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
+        ti_fields = map(lambda x: x.field, concrete_fields)
+        self.kernel.grad(*ti_fields)
 
 
 class Tube(torch.nn.Module):
@@ -393,7 +394,6 @@ class TubeFunc(torch.autograd.Function):
             for seal, concrete_field in input_concrete_fields + intermediate_concrete_fields + output_concrete_fields
         }
         ctx.input_concrete_fields = input_concrete_fields
-        ctx.intermediate_concrete_fields = intermediate_concrete_fields
         ctx.output_concrete_fields = output_concrete_fields
         ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
         for tensor, (_, concrete_input_field) in zip(input_tensors, input_concrete_fields):
@@ -402,6 +402,7 @@ class TubeFunc(torch.autograd.Function):
         for kernel_bundle in tube.kernel_bundles:
             kernel_bundle.forward(seal_name_to_concrete_fields)
 
+        ctx.kernel_bundles = tube.kernel_bundles
         output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
         if len(output_tensors) == 1:
@@ -411,6 +412,20 @@ class TubeFunc(torch.autograd.Function):
 
     @staticmethod
     @once_differentiable
-    def backward(ctx: Any, *grad_outputs: Any) -> Any:
-        # TODO
-        pass
+    def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
+        # TODO: test
+        output_concrete_fields = ctx.output_concrete_fields
+        for grad_tensor, (seal, output_concrete_field) in zip(grad_outputs, output_concrete_fields):
+            if seal.requires_grad:
+                output_concrete_field.grad_from_tensor(grad_tensor)
+
+        for kernel_bundle in reversed(ctx.kernel_bundles):
+            kernel_bundle.backward(ctx.seal_name_to_concrete_fields)
+
+        gradient_tensors = [None]
+        for input_seal, input_concrete_field in ctx.input_concrete_fields:
+            if input_seal.requires_grad:
+                gradient_tensors.append(input_concrete_field.grad_to_tensor())
+            else:
+                gradient_tensors.append(None)
+        return tuple(gradient_tensors)
