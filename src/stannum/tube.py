@@ -53,7 +53,10 @@ class DefaultFieldManager(FieldManager):
             field = ti.field(self.dtype, needs_grad=needs_grad)
 
         fb = ti.FieldsBuilder()
-        fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
+        if needs_grad:
+            fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field, field.grad)
+        else:
+            fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
         snode_handle = fb.finalize()
         return snode_handle, field
 
@@ -102,6 +105,7 @@ class Seal:
             self.device = device
             self.name = name
             self.field_manager = field_manager
+            self.requires_grad = requires_grad
 
         def to_tensor(self) -> torch.Tensor:
             return self.field_manager.to_tensor(self.field)
@@ -413,18 +417,16 @@ class TubeFunc(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
-        # TODO: test
-        output_concrete_fields = ctx.output_concrete_fields
-        for grad_tensor, (seal, output_concrete_field) in zip(grad_outputs, output_concrete_fields):
-            if seal.requires_grad:
+        for grad_tensor, (_, output_concrete_field) in zip(grad_outputs, ctx.output_concrete_fields):
+            if output_concrete_field.requires_grad:
                 output_concrete_field.grad_from_tensor(grad_tensor)
 
         for kernel_bundle in reversed(ctx.kernel_bundles):
             kernel_bundle.backward(ctx.seal_name_to_concrete_fields)
 
         gradient_tensors = [None]
-        for input_seal, input_concrete_field in ctx.input_concrete_fields:
-            if input_seal.requires_grad:
+        for _, input_concrete_field in ctx.input_concrete_fields:
+            if input_concrete_field.requires_grad:
                 gradient_tensors.append(input_concrete_field.grad_to_tensor())
             else:
                 gradient_tensors.append(None)
