@@ -130,13 +130,13 @@ class Seal:
                  name: Optional[str] = None):
         assert dtype is not None, "dtype must not be None"
         # validate dims
-        if dims[0] is None:
-            assert len(dims) >= 2, "Dimensions must have one that's not batch dimension"
-            for i in range(1, len(dims)):
-                assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
-        else:
-            for i in range(len(dims)):
-                assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+        if len(dims) > 0:  # not scalar
+            if dims[0] is None:
+                for i in range(1, len(dims)):
+                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+            else:
+                for i in range(len(dims)):
+                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
 
         for i in dims:
             assert i != 0, f"Dimension cannot be 0, got {dims}"
@@ -219,7 +219,6 @@ class Tube(torch.nn.Module):
         assert not self._finished, "Try to register input tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
-        assert len(dims) > 0, "Input tensor must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         seal = Seal(dtype, *dims,
@@ -239,7 +238,6 @@ class Tube(torch.nn.Module):
         assert not self._finished, "Try to register output tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
-        assert len(dims) > 0, "Output tensor must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
@@ -262,7 +260,6 @@ class Tube(torch.nn.Module):
         assert not self._finished, "Try to register intermediate field after .finish()"
         assert ti_dtype is not None, "dtype cannot be None"
         assert isinstance(ti_dtype, TiDataType)
-        assert len(dims) > 0, "Intermediate field must have at least 1D"
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert requires_grad is not None, "requires_grad cannot be None when registering an intermediate field"
@@ -306,7 +303,9 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
     for i, (tensor_shape, input_dim) in enumerate(zip(tensor_shapes, input_dims)):
         assert len(tensor_shape) == len(input_dim), \
             f"Dimensionality check failed, expecting the {i}th tensor to be {len(input_dim)}D, got {len(tensor_shape)}D"
-        if input_dim[0] is None:
+        if len(input_dim) == 0:  # scalar, shape = ()
+            continue
+        elif input_dim[0] is None:  # shape = (None, ...)
             if batch_num is None:
                 batch_num = tensor_shape[0]
             else:

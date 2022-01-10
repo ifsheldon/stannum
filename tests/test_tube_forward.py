@@ -87,6 +87,30 @@ def test_any_dims():
     out = tube(a, b)
     assert torch.allclose(out, torch.tensor([2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 0., 0., 0.]))
 
+
+@ti.kernel
+def add_scalar(arr: ti.template(), scalar: ti.template(), out: ti.template()):
+    for i in arr:
+        out[i] = arr[i] + scalar[None]
+
+
+def test_scalar():
+    ti.init(ti.cpu)
+    cpu = torch.device("cpu")
+    tube = Tube(cpu) \
+        .register_input_tensor((10,), torch.float32, "arr") \
+        .register_input_tensor((), torch.float32, "scalar") \
+        .register_output_tensor((10,), torch.float32, "out", True) \
+        .register_kernel(add_scalar, ["arr", "scalar", "out"]) \
+        .finish()
+    a = torch.ones(10, requires_grad=True)
+    b = torch.tensor(1.0, requires_grad=True)
+    print(b.shape)
+    out = tube(a, b)
+    out.sum().backward()
+    assert torch.allclose(out, torch.full_like(out, 2.0))
+    assert b.grad == 10.
+
 # def test_any_dims_out_of_bound():
 #     ti.init(ti.cpu)
 #     cpu = torch.device("cpu")
