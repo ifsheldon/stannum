@@ -15,6 +15,14 @@ from .utils import is_kernel, autofill_kernel_name_available
 
 
 class FieldManager(ABC):
+    """
+    FieldManagers enable potential flexible field constructions and manipulations.
+
+    For example, instead of ordinarily layout-ting a multidimensional field,
+    you can do hierarchical placements for fields, which may gives dramatic performance improvements
+    based on applications. Since hierarchical fields may not have the same shape of input tensor,
+    it's YOUR responsibility to write a FieldManager that can correctly transform field values into/from tensors
+    """
 
     @abstractmethod
     def construct_field(self, concrete_tensor_shape: Tuple[int, ...], needs_grad: bool) \
@@ -39,6 +47,10 @@ class FieldManager(ABC):
 
 
 class DefaultFieldManager(FieldManager):
+    """
+    Default field manager which layouts data in tensors by constructing fields
+    with the ordinary multidimensional array layout
+    """
 
     def __init__(self, dtype: TiDataType, complex_dtype: bool, device: torch.device):
         self.dtype = dtype
@@ -83,45 +95,50 @@ class DefaultFieldManager(FieldManager):
         grad_field.from_torch(tensor)
 
 
+class ConcreteField:
+    """
+    An extension of Taichi fields with auto deconstruction
+    """
+
+    def __init__(self,
+                 dtype: TiDataType,
+                 concrete_tensor_shape: Tuple[int, ...],
+                 field_manager: FieldManager,
+                 complex_dtype: bool,
+                 requires_grad: bool,
+                 device: torch.device,
+                 name: str):
+        assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
+        if field_manager is None:
+            field_manager = DefaultFieldManager(dtype, complex_dtype, device)
+        snode_handle, field = field_manager.construct_field(concrete_tensor_shape, requires_grad)
+        assert field is not None and snode_handle is not None
+        self.complex_dtype: bool = complex_dtype
+        self.field: Union[ScalarField, MatrixField] = field
+        self.snode_handle: SNodeTree = snode_handle
+        self.device: torch.device = device
+        self.name: str = name
+        self.field_manager: FieldManager = field_manager
+        self.requires_grad: bool = requires_grad
+
+    def to_tensor(self) -> torch.Tensor:
+        return self.field_manager.to_tensor(self.field)
+
+    def grad_to_tensor(self) -> torch.Tensor:
+        return self.field_manager.grad_to_tensor(self.field.grad)
+
+    def from_tensor(self, tensor):
+        self.field_manager.from_tensor(self.field, tensor)
+
+    def grad_from_tensor(self, tensor):
+        self.field_manager.grad_from_tensor(self.field.grad, tensor)
+
+    def __del__(self):
+        if hasattr(self, "snode_handle"):  # in case of exception raised in __init__
+            self.snode_handle.destroy()
+
+
 class Seal:
-    class ConcreteField:
-
-        def __init__(self,
-                     dtype: TiDataType,
-                     concrete_tensor_shape: Tuple[int, ...],
-                     field_manager: FieldManager,
-                     complex_dtype: bool,
-                     requires_grad: bool,
-                     device: torch.device,
-                     name: str):
-            assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
-            if field_manager is None:
-                field_manager = DefaultFieldManager(dtype, complex_dtype, device)
-            snode_handle, field = field_manager.construct_field(concrete_tensor_shape, requires_grad)
-            assert field is not None and snode_handle is not None
-            self.complex_dtype = complex_dtype
-            self.field = field
-            self.snode_handle = snode_handle
-            self.device = device
-            self.name = name
-            self.field_manager = field_manager
-            self.requires_grad = requires_grad
-
-        def to_tensor(self) -> torch.Tensor:
-            return self.field_manager.to_tensor(self.field)
-
-        def grad_to_tensor(self) -> torch.Tensor:
-            return self.field_manager.grad_to_tensor(self.field.grad)
-
-        def from_tensor(self, tensor):
-            self.field_manager.from_tensor(self.field, tensor)
-
-        def grad_from_tensor(self, tensor):
-            self.field_manager.grad_from_tensor(self.field.grad, tensor)
-
-        def __del__(self):
-            if hasattr(self, "snode_handle"):  # in case of exception raised in __init__
-                self.snode_handle.destroy()
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
                  *dims: int,
@@ -144,34 +161,31 @@ class Seal:
         self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
         if self.complex_dtype:
             dtype = ti.f32 if dtype == torch.cfloat else ti.f64
-        self.dtype = to_taichi_type(dtype) if dtype is not None else dtype
-        self.field_manager = field_manager
-        self.dims = dims
-        self.name = name
-        self.requires_grad = requires_grad
-        self.expect_tensor_shape = dims
-        self.concrete_field = None
-        self.snode_handle = None
+        self.dtype: TiDataType = to_taichi_type(dtype) if dtype is not None else dtype
+        self.field_manager: FieldManager = field_manager
+        self.dims: Tuple[int, ...] = dims
+        self.name: str = name
+        self.requires_grad: bool = requires_grad
 
-    def concretize(self, concrete_shape: Tuple[int, ...], device: torch.device, needs_grad: bool):
-        return Seal.ConcreteField(self.dtype, concrete_shape, self.field_manager, self.complex_dtype,
-                                  needs_grad if self.requires_grad is None else self.requires_grad,
-                                  device, self.name)
+    def concretize(self, concrete_shape: Tuple[int, ...], device: torch.device, needs_grad: bool) -> ConcreteField:
+        return ConcreteField(self.dtype, concrete_shape, self.field_manager, self.complex_dtype,
+                             needs_grad if self.requires_grad is None else self.requires_grad,
+                             device, self.name)
 
 
 class TubeKernelBundle:
     def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal]):
-        self.kernel = kernel
+        self.kernel: Callable = kernel
         self.name: str = kernel.__name__ if name is None else name
-        self.seals = seals
-        self.seal_names = [s.name for s in seals]
+        self.seals: List[Seal] = seals
+        self.seal_names: List[str] = [s.name for s in seals]
 
-    def forward(self, seal_name_to_concrete_field: Dict[str, Seal.ConcreteField]):
+    def forward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
         ti_fields = map(lambda x: x.field, concrete_fields)
         self.kernel(*ti_fields)
 
-    def backward(self, seal_name_to_concrete_field: Dict[str, Seal.ConcreteField]):
+    def backward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
         ti_fields = map(lambda x: x.field, concrete_fields)
         self.kernel.grad(*ti_fields)
@@ -366,7 +380,7 @@ class TubeFunc(torch.autograd.Function):
     def concretize(device: torch.device,
                    needs_grad: bool,
                    concrete_shape: Tuple[int, ...],
-                   seal: Seal) -> Tuple[Seal, Seal.ConcreteField]:
+                   seal: Seal) -> Tuple[Seal, ConcreteField]:
         concrete_field = seal.concretize(concrete_shape, device, needs_grad)
         return seal, concrete_field
 
@@ -382,15 +396,15 @@ class TubeFunc(torch.autograd.Function):
             tube.intermediate_field_placeholders,
             tube.output_placeholders)
         input_field_concretizer = partial(TubeFunc.concretize, device)
-        input_concrete_fields: List[Tuple[Seal, Seal.ConcreteField]] = list(map(input_field_concretizer,
-                                                                                map(lambda x: x.requires_grad,
-                                                                                    input_tensors),
-                                                                                concrete_input_shapes,
-                                                                                tube.input_placeholders))
+        input_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(map(input_field_concretizer,
+                                                                           map(lambda x: x.requires_grad,
+                                                                               input_tensors),
+                                                                           concrete_input_shapes,
+                                                                           tube.input_placeholders))
         other_field_concretize = partial(TubeFunc.concretize, device, None)
-        intermediate_concrete_fields: List[Tuple[Seal, Seal.ConcreteField]] = list(
+        intermediate_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(
             map(other_field_concretize, concrete_intermediate_shapes, tube.intermediate_field_placeholders))
-        output_concrete_fields: List[Tuple[Seal, Seal.ConcreteField]] = list(
+        output_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(
             map(other_field_concretize, concrete_output_shapes, tube.output_placeholders))
         seal_name_to_concrete_fields = {
             seal.name: concrete_field
