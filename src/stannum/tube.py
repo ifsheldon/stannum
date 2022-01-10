@@ -410,15 +410,18 @@ class TubeFunc(torch.autograd.Function):
             seal.name: concrete_field
             for seal, concrete_field in input_concrete_fields + intermediate_concrete_fields + output_concrete_fields
         }
-        ctx.input_concrete_fields = input_concrete_fields
-        ctx.output_concrete_fields = output_concrete_fields
-        ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
+
         for tensor, (_, concrete_input_field) in zip(input_tensors, input_concrete_fields):
             concrete_input_field.from_tensor(tensor)
 
         for kernel_bundle in tube.kernel_bundles:
             kernel_bundle.forward(seal_name_to_concrete_fields)
 
+        output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
+
+        ctx.input_concrete_fields = input_concrete_fields
+        ctx.output_concrete_fields = output_concrete_fields
+        ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
         ctx.kernel_bundles = tube.kernel_bundles
         output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
