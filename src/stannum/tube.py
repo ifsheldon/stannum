@@ -305,7 +305,7 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
     batch_num = None
     for i, (tensor_shape, input_dim) in enumerate(zip(tensor_shapes, input_dims)):
         assert len(tensor_shape) == len(input_dim), \
-            f"Dimensionality check failed, expecting the {i}th tensor to be {len(input_dim)}D, got {len(tensor_shape)}"
+            f"Dimensionality check failed, expecting the {i}th tensor to be {len(input_dim)}D, got {len(tensor_shape)}D"
         if input_dim[0] is None:
             if batch_num is None:
                 batch_num = tensor_shape[0]
