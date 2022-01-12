@@ -423,7 +423,6 @@ class TubeFunc(torch.autograd.Function):
         ctx.output_concrete_fields = output_concrete_fields
         ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
         ctx.kernel_bundles = tube.kernel_bundles
-        output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
         if len(output_tensors) == 1:
             return output_tensors[0]
