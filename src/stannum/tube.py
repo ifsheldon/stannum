@@ -113,6 +113,8 @@ class ConcreteField:
             field_manager = DefaultFieldManager(dtype, complex_dtype, device)
         snode_handle, field = field_manager.construct_field(concrete_tensor_shape, requires_grad)
         assert field is not None and snode_handle is not None
+        if requires_grad:
+            field.grad.fill(0)  # Fix uninitialized memory rooted in Taichi
         self.complex_dtype: bool = complex_dtype
         self.field: Union[ScalarField, MatrixField] = field
         self.snode_handle: SNodeTree = snode_handle
@@ -436,6 +438,7 @@ class TubeFunc(torch.autograd.Function):
             if output_concrete_field.requires_grad:
                 output_concrete_field.grad_from_tensor(grad_tensor)
 
+        arr_field = ctx.seal_name_to_concrete_fields["arr"].field
         for kernel_bundle in reversed(ctx.kernel_bundles):
             kernel_bundle.backward(ctx.seal_name_to_concrete_fields)
 
