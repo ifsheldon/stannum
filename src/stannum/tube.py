@@ -587,11 +587,14 @@ class TubeFunc(torch.autograd.Function):
                 gradients.append(grad_tensor_batch)
 
             input_grads = [None]
-            for input_idx in range(len(input_seals)):
+            for input_idx, input_seal in enumerate(input_seals):
                 grad_per_input = [gradients[batch_idx][input_idx] for batch_idx in range(batch_num)]
                 if any(map(lambda x: x is None, grad_per_input)):
                     input_grads.append(None)
                 else:
-                    input_grads.append(torch.stack(grad_per_input, dim=0).sum(dim=0))
+                    if input_seal.batched:
+                        input_grads.append(torch.stack(grad_per_input, dim=0))
+                    else:
+                        input_grads.append(torch.stack(grad_per_input, dim=0).sum(dim=0))
 
             return tuple(input_grads)
