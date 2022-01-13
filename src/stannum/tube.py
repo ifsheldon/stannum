@@ -518,13 +518,10 @@ class TubeFunc(torch.autograd.Function):
             output_tensors = tuple(output_tensors)
 
         ctx.input_concrete_fields = input_concrete_fields
-        ctx.input_seals = input_seals
         ctx.output_concrete_fields = output_concrete_fields
-        ctx.output_seals = output_seals
         ctx.intermediate_concrete_fields = intermediate_concrete_fields
-        ctx.intermediate_seals = intermediate_seals
-        ctx.kernel_bundles = tube.kernel_bundles
         ctx.batch_num = batch_num
+        ctx.tube = tube
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
         if len(output_tensors) == 1:
             return output_tensors[0]
@@ -534,10 +531,11 @@ class TubeFunc(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
+        tube: Tube = ctx.tube
         batch_num = ctx.batch_num
-        input_seals = ctx.input_seals
-        output_seals = ctx.output_seals
-        intermediate_seals = ctx.intermediate_seals
+        input_seals = tube.input_placeholders
+        output_seals = tube.output_placeholders
+        intermediate_seals = tube.intermediate_field_placeholders
         input_concrete_fields = ctx.input_concrete_fields
         intermediate_concrete_fields = ctx.intermediate_concrete_fields
         output_concrete_fields = ctx.output_concrete_fields
@@ -551,7 +549,7 @@ class TubeFunc(torch.autograd.Function):
                 zip(input_seals + intermediate_seals + output_seals,
                     input_concrete_fields + intermediate_concrete_fields + output_concrete_fields)
             }
-            for kernel_bundle in reversed(ctx.kernel_bundles):
+            for kernel_bundle in reversed(tube.kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
             gradient_tensors = [None]
@@ -578,7 +576,7 @@ class TubeFunc(torch.autograd.Function):
                     zip(input_seals + intermediate_seals + output_seals,
                         input_concrete_field_batch + intermediate_concrete_field_batch + output_concrete_field_batch)
                 }
-                for kernel_bundle in reversed(ctx.kernel_bundles):
+                for kernel_bundle in reversed(tube.kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
                 grad_tensor_batch = []
                 for input_concrete_field in input_concrete_field_batch:
