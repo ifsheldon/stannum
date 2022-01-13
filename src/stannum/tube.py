@@ -61,7 +61,6 @@ class DefaultFieldManager(FieldManager):
         self.dtype: TiDataType = dtype
         self.complex_dtype: bool = complex_dtype
         self.device: torch.device = device
-        self.snode: SNodeTree = None
 
     def construct_field(self,
                         fields_builder: ti.FieldsBuilder,
