@@ -43,7 +43,7 @@ def test_loop_backward():
 
     for i in range(100):
         print(i)
-        # FIXME: this fails after 34 iterations because 512/8=64, and 512 is the snode number limit
+        # FIXME: this fails after 64 iterations because 512/8=64, and 512 is the snode number limit
         a0 = torch.ones(10, requires_grad=True)
         a1 = torch.ones(10, requires_grad=True)
         a2 = torch.ones(10, requires_grad=True)
