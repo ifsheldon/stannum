@@ -438,7 +438,6 @@ class TubeFunc(torch.autograd.Function):
             if output_concrete_field.requires_grad:
                 output_concrete_field.grad_from_tensor(grad_tensor)
 
-        arr_field = ctx.seal_name_to_concrete_fields["arr"].field
         for kernel_bundle in reversed(ctx.kernel_bundles):
             kernel_bundle.backward(ctx.seal_name_to_concrete_fields)
 
