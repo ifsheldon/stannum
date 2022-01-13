@@ -25,8 +25,10 @@ class FieldManager(ABC):
     """
 
     @abstractmethod
-    def construct_field(self, concrete_tensor_shape: Tuple[int, ...], needs_grad: bool) \
-            -> Tuple[SNodeTree, Union[ScalarField, MatrixField]]:
+    def construct_field(self,
+                        fields_builder: ti.FieldsBuilder,
+                        concrete_tensor_shape: Tuple[int, ...],
+                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
         pass
 
     @abstractmethod
@@ -52,25 +54,32 @@ class DefaultFieldManager(FieldManager):
     with the ordinary multidimensional array layout
     """
 
-    def __init__(self, dtype: TiDataType, complex_dtype: bool, device: torch.device):
-        self.dtype = dtype
-        self.complex_dtype = complex_dtype
-        self.device = device
+    def __init__(self,
+                 dtype: TiDataType,
+                 complex_dtype: bool,
+                 device: torch.device):
+        self.dtype: TiDataType = dtype
+        self.complex_dtype: bool = complex_dtype
+        self.device: torch.device = device
+        self.snode: SNodeTree = None
 
-    def construct_field(self, concrete_tensor_shape: Tuple[int, ...], needs_grad: bool) -> Tuple[
-        SNodeTree, Union[ScalarField, MatrixField]]:
+    def construct_field(self,
+                        fields_builder: ti.FieldsBuilder,
+                        concrete_tensor_shape: Tuple[int, ...],
+                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
+        assert not fields_builder.finalized
         if self.complex_dtype:
             field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
         else:
             field = ti.field(self.dtype, needs_grad=needs_grad)
 
-        fb = ti.FieldsBuilder()
         if needs_grad:
-            fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field, field.grad)
+            fields_builder \
+                .dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape) \
+                .place(field, field.grad)
         else:
-            fb.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
-        snode_handle = fb.finalize()
-        return snode_handle, field
+            fields_builder.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
+        return field
 
     def to_tensor(self, field: Union[ScalarField, MatrixField]) -> torch.Tensor:
         tensor = field.to_torch(device=self.device)
@@ -104,6 +113,7 @@ class ConcreteField:
                  dtype: TiDataType,
                  concrete_tensor_shape: Tuple[int, ...],
                  field_manager: FieldManager,
+                 fields_builder: ti.FieldsBuilder,
                  complex_dtype: bool,
                  requires_grad: bool,
                  device: torch.device,
@@ -111,17 +121,23 @@ class ConcreteField:
         assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
         if field_manager is None:
             field_manager = DefaultFieldManager(dtype, complex_dtype, device)
-        snode_handle, field = field_manager.construct_field(concrete_tensor_shape, requires_grad)
-        assert field is not None and snode_handle is not None
-        if requires_grad:
-            field.grad.fill(0)  # Fix uninitialized memory rooted in Taichi
+        field = field_manager.construct_field(fields_builder, concrete_tensor_shape, requires_grad)
+        self.fb = fields_builder
         self.complex_dtype: bool = complex_dtype
         self.field: Union[ScalarField, MatrixField] = field
-        self.snode_handle: SNodeTree = snode_handle
         self.device: torch.device = device
         self.name: str = name
         self.field_manager: FieldManager = field_manager
         self.requires_grad: bool = requires_grad
+
+    def clear_grad(self):
+        assert self.fb.finalized
+        if self.requires_grad:
+            self.field.grad.fill(0)
+
+    def clear_field(self):
+        assert self.fb.finalized
+        self.field.fill(0)
 
     def to_tensor(self) -> torch.Tensor:
         return self.field_manager.to_tensor(self.field)
@@ -134,10 +150,6 @@ class ConcreteField:
 
     def grad_from_tensor(self, tensor):
         self.field_manager.grad_from_tensor(self.field.grad, tensor)
-
-    def __del__(self):
-        if hasattr(self, "snode_handle"):  # in case of exception raised in __init__
-            self.snode_handle.destroy()
 
 
 class Seal:
@@ -169,8 +181,13 @@ class Seal:
         self.name: str = name
         self.requires_grad: bool = requires_grad
 
-    def concretize(self, concrete_shape: Tuple[int, ...], device: torch.device, needs_grad: bool) -> ConcreteField:
-        return ConcreteField(self.dtype, concrete_shape, self.field_manager, self.complex_dtype,
+    def concretize(self, concrete_shape: Tuple[int, ...],
+                   fields_builder: ti.FieldsBuilder,
+                   device: torch.device,
+                   needs_grad: bool) -> ConcreteField:
+        return ConcreteField(self.dtype, concrete_shape,
+                             self.field_manager, fields_builder,
+                             self.complex_dtype,
                              needs_grad if self.requires_grad is None else self.requires_grad,
                              device, self.name)
 
@@ -380,10 +397,11 @@ class TubeFunc(torch.autograd.Function):
 
     @staticmethod
     def concretize(device: torch.device,
+                   fields_builder: ti.FieldsBuilder,
                    needs_grad: bool,
                    concrete_shape: Tuple[int, ...],
                    seal: Seal) -> Tuple[Seal, ConcreteField]:
-        concrete_field = seal.concretize(concrete_shape, device, needs_grad)
+        concrete_field = seal.concretize(concrete_shape, fields_builder, device, needs_grad)
         return seal, concrete_field
 
     @staticmethod
@@ -392,18 +410,20 @@ class TubeFunc(torch.autograd.Function):
         device = input_tensors[0].device
         for t in input_tensors:
             assert t.device == device, f"Tensors not on the same device"
+
+        fb = ti.FieldsBuilder()
         input_tensor_shapes = list(map(lambda x: x.shape, input_tensors))
         concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes = unify_and_concretize_shapes(
             input_tensor_shapes, tube.input_placeholders,
             tube.intermediate_field_placeholders,
             tube.output_placeholders)
-        input_field_concretizer = partial(TubeFunc.concretize, device)
+        input_field_concretizer = partial(TubeFunc.concretize, device, fb)
         input_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(map(input_field_concretizer,
                                                                            map(lambda x: x.requires_grad,
                                                                                input_tensors),
                                                                            concrete_input_shapes,
                                                                            tube.input_placeholders))
-        other_field_concretize = partial(TubeFunc.concretize, device, None)
+        other_field_concretize = partial(TubeFunc.concretize, device, fb, None)
         intermediate_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(
             map(other_field_concretize, concrete_intermediate_shapes, tube.intermediate_field_placeholders))
         output_concrete_fields: List[Tuple[Seal, ConcreteField]] = list(
@@ -412,6 +432,10 @@ class TubeFunc(torch.autograd.Function):
             seal.name: concrete_field
             for seal, concrete_field in input_concrete_fields + intermediate_concrete_fields + output_concrete_fields
         }
+
+        snode = fb.finalize()
+        for _, field in intermediate_concrete_fields + output_concrete_fields:
+            field.clear_field()
 
         for tensor, (_, concrete_input_field) in zip(input_tensors, input_concrete_fields):
             concrete_input_field.from_tensor(tensor)
@@ -422,9 +446,11 @@ class TubeFunc(torch.autograd.Function):
         output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in output_concrete_fields)
 
         ctx.input_concrete_fields = input_concrete_fields
+        ctx.intermediate_concrete_fields = intermediate_concrete_fields
         ctx.output_concrete_fields = output_concrete_fields
         ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
         ctx.kernel_bundles = tube.kernel_bundles
+        ctx.snode = snode
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
         if len(output_tensors) == 1:
             return output_tensors[0]
@@ -438,6 +464,9 @@ class TubeFunc(torch.autograd.Function):
             if output_concrete_field.requires_grad:
                 output_concrete_field.grad_from_tensor(grad_tensor)
 
+        for _, field in ctx.intermediate_concrete_fields + ctx.input_concrete_fields:
+            field.clear_grad()
+
         for kernel_bundle in reversed(ctx.kernel_bundles):
             kernel_bundle.backward(ctx.seal_name_to_concrete_fields)
 
@@ -447,4 +476,5 @@ class TubeFunc(torch.autograd.Function):
                 gradient_tensors.append(input_concrete_field.grad_to_tensor())
             else:
                 gradient_tensors.append(None)
+        ctx.snode.destroy()
         return tuple(gradient_tensors)
