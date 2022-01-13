@@ -151,6 +151,18 @@ class ConcreteField:
         self.field_manager.grad_from_tensor(self.field.grad, tensor)
 
 
+class SNode:
+    """
+    Pythonic wrapper around SNodeTree that can auto recycle memory
+    """
+
+    def __init__(self, snode: SNodeTree):
+        self.snode = snode
+
+    def __del__(self):
+        self.snode.destroy()
+
+
 class Seal:
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
@@ -449,7 +461,7 @@ class TubeFunc(torch.autograd.Function):
         ctx.output_concrete_fields = output_concrete_fields
         ctx.seal_name_to_concrete_fields = seal_name_to_concrete_fields
         ctx.kernel_bundles = tube.kernel_bundles
-        ctx.snode = snode
+        ctx.snode = SNode(snode)  # not used in backward() but important to auto clean memory
         ctx.mark_non_differentiable(*filter(lambda x: not x.requires_grad, output_tensors))
         if len(output_tensors) == 1:
             return output_tensors[0]
@@ -475,5 +487,4 @@ class TubeFunc(torch.autograd.Function):
                 gradient_tensors.append(input_concrete_field.grad_to_tensor())
             else:
                 gradient_tensors.append(None)
-        ctx.snode.destroy()
         return tuple(gradient_tensors)
