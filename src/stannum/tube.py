@@ -551,6 +551,7 @@ class TubeFunc(torch.autograd.Function):
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
                 else:
                     gradient_tensors.append(None)
+            ctx.snode.destroy()
             return tuple(gradient_tensors)
         else:
             scf = TubeFunc.select_concrete_field
