@@ -210,7 +210,7 @@ class Tube(torch.nn.Module):
         return self
 
     def register_input_tensor(self,
-                              dims: Iterable[int],
+                              dims: Iterable[Union[int, None]],
                               dtype: torch.dtype,
                               name: str,
                               requires_grad: Optional[bool] = None,
@@ -231,7 +231,7 @@ class Tube(torch.nn.Module):
         return self
 
     def register_output_tensor(self,
-                               dims: Iterable[int],
+                               dims: Iterable[Union[int, None]],
                                dtype: torch.dtype,
                                name: str,
                                requires_grad: bool,
@@ -256,7 +256,7 @@ class Tube(torch.nn.Module):
         return self
 
     def register_intermediate_field(self,
-                                    dims: Iterable[int],
+                                    dims: Iterable[Union[int, None]],
                                     ti_dtype: TiDataType,
                                     name: str,
                                     requires_grad: bool,
