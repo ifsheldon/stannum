@@ -204,7 +204,7 @@ class Tube(torch.nn.Module):
 
         for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
             for d in placeholder.dims:
-                if d < 0 and d not in neg_dims:
+                if d is not None and d < 0 and d not in neg_dims:
                     raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
         self._finished = True
         return self
