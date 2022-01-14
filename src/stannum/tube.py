@@ -446,7 +446,6 @@ class TubeFunc(torch.autograd.Function):
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
                                    zip(output_seals, output_concrete_fields))
         else:
-            # TODO: test
             input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
             for tensor_shape, seal, tensor in zip(concrete_input_shapes, input_seals, input_tensors):
                 requires_grad = tensor.requires_grad
