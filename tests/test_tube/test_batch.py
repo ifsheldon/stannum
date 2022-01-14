@@ -5,7 +5,7 @@ from src.stannum.tube import Tube
 
 
 @ti.kernel
-def broadcast_add(a: ti.template(), b: ti.template(), out: ti.template()):
+def int_add(a: ti.template(), b: ti.template(), out: ti.template()):
     out[None] = a[None] + b[None]
 
 
@@ -17,7 +17,7 @@ def test_batch_backward_scalar():
         .register_input_tensor((None,), torch.float32, "a") \
         .register_input_tensor((), torch.float32, "b") \
         .register_output_tensor((None,), torch.float32, "out", True) \
-        .register_kernel(broadcast_add, ["a", "b", "out"]) \
+        .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, b)
     loss = out.sum()
@@ -35,7 +35,7 @@ def test_batch():
         .register_input_tensor((None,), torch.float32, "a") \
         .register_input_tensor((None,), torch.float32, "b") \
         .register_output_tensor((None,), torch.float32, "out", True) \
-        .register_kernel(broadcast_add, ["a", "b", "out"]) \
+        .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, batched_b)
     loss = out.sum()
