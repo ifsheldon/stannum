@@ -47,6 +47,12 @@ class SNode:
 
     def __init__(self, snode: SNodeTree):
         self.snode = snode
+        self.destroyed = False
+
+    def destroy(self):
+        if not self.destroyed:
+            self.snode.destroy()
+            self.destroyed = True
 
     def __del__(self):
-        self.snode.destroy()
+        self.destroy()

@@ -591,5 +591,5 @@ class TubeFunc(torch.autograd.Function):
                         input_grads.append(torch.stack(grad_per_input, dim=0))
                     else:
                         input_grads.append(torch.stack(grad_per_input, dim=0).sum(dim=0))
-
+            ctx.snode.destroy()
             return tuple(input_grads)
