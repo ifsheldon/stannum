@@ -158,6 +158,10 @@ class Seal:
 
 
 class TubeKernelBundle:
+    """
+    Extension of Taichi kernel
+    """
+
     def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal], extra_args: Tuple[Any, ...]):
         self.kernel: Callable = kernel
         self.name: str = kernel.__name__ if name is None else name
@@ -177,9 +181,17 @@ class TubeKernelBundle:
 
 
 class Tube(torch.nn.Module):
+    """
+    Self-managed Taichi-PyTorch adapter
+    """
 
     def __init__(self,
                  device: Optional[torch.device] = None):
+        """
+        Init a tube
+
+        @param device: Optional, torch.device tensors are on, if it's None, the device is determined by input tensors
+        """
         super().__init__()
         self.input_placeholders: List[Seal] = []
         self.output_placeholders: List[Seal] = []
@@ -197,6 +209,15 @@ class Tube(torch.nn.Module):
                               name: str,
                               requires_grad: Optional[bool] = None,
                               field_manager: Optional[FieldManager] = None):
+        """
+        Register an input tensor
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param requires_grad: optional, if it's None, it will be determined by input tensor
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
         assert not self._finished, "Try to register input tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
@@ -218,6 +239,15 @@ class Tube(torch.nn.Module):
                                name: str,
                                requires_grad: bool,
                                field_manager: Optional[FieldManager] = None):
+        """
+        Register an output tensor
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param requires_grad: if the output requires gradients
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
         assert not self._finished, "Try to register output tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
@@ -241,19 +271,30 @@ class Tube(torch.nn.Module):
                                     dims: Iterable[Union[int, None]],
                                     ti_dtype: TiDataType,
                                     name: str,
-                                    requires_grad: bool,
+                                    needs_grad: bool,
                                     field_manager: Optional[FieldManager] = None):
+        """
+        Register an intermediate field,
+        which can be useful if multiple kernels are used and intermediate results between kernels are stored
+
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param ti_dtype: taichi data type
+        @param name: name of the field
+        @param needs_grad: if the field needs gradients.
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
         assert not self._finished, "Try to register intermediate field after .finish()"
         assert ti_dtype is not None, "dtype cannot be None"
         assert isinstance(ti_dtype, TiDataType)
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
-        assert requires_grad is not None, "requires_grad cannot be None when registering an intermediate field"
+        assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
         assert not any(map(lambda d: d == -1, dims)), \
             "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
         seal = Seal(ti_dtype, *dims,
                     field_manager=field_manager,
-                    requires_grad=requires_grad,
+                    requires_grad=needs_grad,
                     name=name)
         if seal.batched:
             self.batched = True
@@ -261,15 +302,23 @@ class Tube(torch.nn.Module):
         self.seals[name] = seal
         return self
 
-    def register_kernel(self, kernel: Callable, arg_names: List[str], *extra_args: Any, name: Optional[str] = None):
+    def register_kernel(self, kernel: Callable, tensor_names: List[str], *extra_args: Any, name: Optional[str] = None):
+        """
+        Register a Taichi kernel
+
+        @param kernel: Taichi kernel. For requirements, see README
+        @param tensor_names: the names of registered tensors that are to be used in this kernel
+        @param extra_args: any extra arguments passed to the kernel
+        @param name: name of this kernel, if it's None, it will be kernel.__name__
+        """
         assert not self._finished, "Try to register kernel after .finish()"
         assert is_kernel(kernel), "Passed function is not a Taichi kernel"
         assert autofill_kernel_name_available(kernel) or name is not None, \
             "kernel has no __name__, please update your Taichi or specify its name"
-        assert all(map(lambda x: isinstance(x, str), arg_names)), "arg_names must be strings"
-        not_registered_names = list(filter(lambda x: x not in self.seals, arg_names))
+        assert all(map(lambda x: isinstance(x, str), tensor_names)), "arg_names must be strings"
+        not_registered_names = list(filter(lambda x: x not in self.seals, tensor_names))
         assert len(not_registered_names) == 0, f"Some names are not registered: {not_registered_names}"
-        seals = list(map(lambda x: self.seals[x], arg_names))
+        seals = list(map(lambda x: self.seals[x], tensor_names))
         kernel_bundle = TubeKernelBundle(kernel, name, seals, extra_args)
         assert kernel_bundle.name not in self.kernel_bundle_dict, \
             f"Kernel with name {kernel_bundle.name} already registered"
@@ -281,7 +330,7 @@ class Tube(torch.nn.Module):
         """
         Set args for a kernel
         @param kernel: kernel function or its name
-        @param extra_args: kernel arguments
+        @param extra_args: extra kernel arguments
         """
         if isinstance(kernel, str):
             kernel_name = kernel
@@ -292,6 +341,9 @@ class Tube(torch.nn.Module):
         self.kernel_bundle_dict[kernel_name].extra_args = extra_args
 
     def finish(self):
+        """
+        Finish all registrations
+        """
         if self._finished:
             return self
         assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
@@ -325,6 +377,9 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
                                 intermediate_fields: List[Seal],
                                 output_placeholders: List[Seal]) \
         -> Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]], List[Tuple[int, ...]], Optional[int]]:
+    """
+    Try to find out concrete numbers in dimension placeholders (like `None`, `-1`, `-2`)
+    """
     input_dims = list(map(lambda x: x.dims, input_placeholders))
 
     # check dimensionality and batch nums
