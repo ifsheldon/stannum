@@ -25,24 +25,6 @@ def test_simple_backward():
     assert torch.allclose(a.grad, torch.ones_like(a) * 2)
 
 
-def test_loop_backward():
-    ti.init(ti.cpu)
-
-    for i in range(10):
-        print(i)
-        a = torch.ones(10, requires_grad=True)
-        tube = Tube() \
-            .register_input_tensor((10,), torch.float32, "arr") \
-            .register_output_tensor((10,), torch.float32, "out", True) \
-            .register_kernel(mul, ["arr", "out"]) \
-            .finish()
-        out = tube(a)
-        loss = out.sum()
-        loss.backward()
-        assert torch.allclose(out, torch.ones_like(out) * 2)
-        assert torch.allclose(a.grad, torch.ones_like(a) * 2), f"{a.grad}"
-
-
 @ti.kernel
 def mul_complex(arr0: ti.template(),
                 arr1: ti.template(),
