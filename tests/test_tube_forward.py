@@ -7,7 +7,6 @@ import pytest
 @ti.kernel
 def ti_add(arr_a: ti.template(), arr_b: ti.template(), output_arr: ti.template()):
     for i in arr_a:
-        print(i)
         output_arr[i] = arr_a[i] + arr_b[i]
 
 
@@ -105,7 +104,6 @@ def test_scalar():
         .finish()
     a = torch.ones(10, requires_grad=True)
     b = torch.tensor(1.0, requires_grad=True)
-    print(b.shape)
     out = tube(a, b)
     out.sum().backward()
     assert torch.allclose(out, torch.full_like(out, 2.0))
