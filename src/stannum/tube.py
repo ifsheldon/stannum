@@ -496,14 +496,14 @@ class TubeFunc(torch.autograd.Function):
                     concrete_input_field.from_tensor(tensor)
                 for kernel_bundle in tube.kernel_bundles:
                     kernel_bundle.forward(seal_name_to_concrete_fields)
-                output_tensors = list(ocf.to_tensor().requires_grad_(s.requires_grad)
-                                      for s, ocf in zip(output_seals, concrete_output_field_batch))
+                output_tensors = [ocf.to_tensor() for ocf in concrete_output_field_batch]
                 output_tensor_batches.append(output_tensors)
 
             output_tensors = []
-            for output_idx in range(len(output_seals)):
-                tensors = [output_tensor_batches[batch_idx][output_idx] for batch_idx in range(batch_num)]
-                output_tensors.append(torch.stack(tensors, dim=0))
+            for output_idx, output_seal in enumerate(output_seals):
+                tensors = [output_tensor_batches[batch_idx][output_idx]
+                           for batch_idx in range(batch_num)]
+                output_tensors.append(torch.stack(tensors, dim=0).requires_grad_(output_seal.requires_grad))
 
             output_tensors = tuple(output_tensors)
 
