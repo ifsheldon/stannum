@@ -430,9 +430,14 @@ class TubeFunc(torch.autograd.Function):
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
-        device = input_tensors[0].device
-        for t in input_tensors:
-            assert t.device == device, f"Tensors not on the same device"
+        if tube.device is None:
+            device = input_tensors[0].device
+            for t in input_tensors:
+                assert t.device == device, f"Tensors not on the same device {device}"
+        else:
+            device = tube.device
+            for t in input_tensors:
+                assert t.device == device, f"Tensors not on the device {device}"
 
         fb = ti.FieldsBuilder()
         input_tensor_shapes = list(map(lambda x: x.shape, input_tensors))
