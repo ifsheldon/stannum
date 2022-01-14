@@ -158,21 +158,22 @@ class Seal:
 
 
 class TubeKernelBundle:
-    def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal]):
+    def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal], extra_args: Tuple[Any, ...]):
         self.kernel: Callable = kernel
         self.name: str = kernel.__name__ if name is None else name
         self.seals: List[Seal] = seals
         self.seal_names: List[str] = [s.name for s in seals]
+        self.extra_args: Tuple[Any, ...] = extra_args
 
     def forward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
-        ti_fields = map(lambda x: x.field, concrete_fields)
-        self.kernel(*ti_fields)
+        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
+        self.kernel(*(ti_fields + self.extra_args))
 
     def backward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
-        ti_fields = map(lambda x: x.field, concrete_fields)
-        self.kernel.grad(*ti_fields)
+        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
+        self.kernel.grad(*(ti_fields + self.extra_args))
 
 
 class Tube(torch.nn.Module):
@@ -188,6 +189,7 @@ class Tube(torch.nn.Module):
         self.device: Optional[torch.device] = device
         self._finished: bool = False
         self.batched: bool = False
+        self.kernel_bundle_dict: Dict[str, TubeKernelBundle] = {}
 
     def finish(self):
         if self._finished:
@@ -279,7 +281,7 @@ class Tube(torch.nn.Module):
         self.seals[name] = seal
         return self
 
-    def register_kernel(self, kernel: Callable, arg_names: List[str], name: Optional[str] = None):
+    def register_kernel(self, kernel: Callable, arg_names: List[str], *extra_args: Any, name: Optional[str] = None):
         assert not self._finished, "Try to register kernel after .finish()"
         assert is_kernel(kernel), "Passed function is not a Taichi kernel"
         assert autofill_kernel_name_available(kernel) or name is not None, \
@@ -288,9 +290,26 @@ class Tube(torch.nn.Module):
         not_registered_names = list(filter(lambda x: x not in self.seals, arg_names))
         assert len(not_registered_names) == 0, f"Some names are not registered: {not_registered_names}"
         seals = list(map(lambda x: self.seals[x], arg_names))
-        kernel_bundle = TubeKernelBundle(kernel, name, seals)
+        kernel_bundle = TubeKernelBundle(kernel, name, seals, extra_args)
+        assert kernel_bundle.name not in self.kernel_bundle_dict, \
+            f"Kernel with name {kernel_bundle.name} already registered"
         self.kernel_bundles.append(kernel_bundle)
+        self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
+
+    def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
+        """
+        Set args for a kernel
+        @param kernel: kernel function or its name
+        @param extra_args: kernel arguments
+        """
+        if isinstance(kernel, str):
+            kernel_name = kernel
+        else:
+            kernel_name = kernel.__name__
+        assert kernel_name in self.kernel_bundle_dict, \
+            f"Kernel with name {kernel_name} not found, please register it first"
+        self.kernel_bundle_dict[kernel_name].extra_args = extra_args
 
     def forward(self, *input_tensors: torch.Tensor):
         return TubeFunc.apply(self, *input_tensors)
