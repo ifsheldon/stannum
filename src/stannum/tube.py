@@ -191,26 +191,6 @@ class Tube(torch.nn.Module):
         self.batched: bool = False
         self.kernel_bundle_dict: Dict[str, TubeKernelBundle] = {}
 
-    def finish(self):
-        if self._finished:
-            return self
-        assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
-        assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
-        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
-        # neg dim check
-        neg_dims = {-1}
-        for ip in self.input_placeholders:
-            for d in ip.dims:
-                if d is not None and d < 0:
-                    neg_dims.add(d)
-
-        for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
-            for d in placeholder.dims:
-                if d is not None and d < 0 and d not in neg_dims:
-                    raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
-        self._finished = True
-        return self
-
     def register_input_tensor(self,
                               dims: Iterable[Union[int, None]],
                               dtype: torch.dtype,
@@ -310,6 +290,31 @@ class Tube(torch.nn.Module):
         assert kernel_name in self.kernel_bundle_dict, \
             f"Kernel with name {kernel_name} not found, please register it first"
         self.kernel_bundle_dict[kernel_name].extra_args = extra_args
+
+    def finish(self):
+        if self._finished:
+            return self
+        assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
+        assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
+        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
+        if self.batched:
+            for output_seal in self.output_placeholders:
+                assert output_seal.batched, \
+                    "Already registered batched inputs, so outputs should also be batched, " \
+                    "which means dims[0] must be None"
+        # neg dim check
+        neg_dims = {-1}
+        for ip in self.input_placeholders:
+            for d in ip.dims:
+                if d is not None and d < 0:
+                    neg_dims.add(d)
+
+        for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
+            for d in placeholder.dims:
+                if d is not None and d < 0 and d not in neg_dims:
+                    raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
+        self._finished = True
+        return self
 
     def forward(self, *input_tensors: torch.Tensor):
         return TubeFunc.apply(self, *input_tensors)
