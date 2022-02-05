@@ -3,7 +3,14 @@ from typing import Tuple, Union
 import taichi as ti
 from taichi import ScalarField, MatrixField
 import torch
-from taichi.snode.snode_tree import SNodeTree
+
+if hasattr(ti, "snode"):
+    from taichi.snode.snode_tree import SNodeTree
+elif hasattr(ti, "_snode"):
+    from taichi._snode.snode_tree import SNodeTree
+else:
+    from .utils import __ti_version
+    raise Exception(f"Unable to import SNodeTree, Taichi version = {__ti_version}")
 
 
 class FieldManager(ABC):
