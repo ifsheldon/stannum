@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Tuple, Union
 import taichi as ti
-from taichi import ScalarField, MatrixField
+from taichi.lang.field import ScalarField
+from taichi.lang.matrix import MatrixField
 import torch
 
 if hasattr(ti, "snode"):
