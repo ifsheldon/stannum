@@ -68,13 +68,13 @@ class TaichiField:
     def from_torch(self, tensor: torch.Tensor):
         self.check_tensor_acceptable(tensor)
         if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
+            tensor = torch.view_as_real(tensor).clone()
         self.field.from_torch(tensor)
 
     def grad_from_torch(self, tensor: torch.Tensor):
         self.check_tensor_acceptable(tensor)
         if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
+            tensor = torch.view_as_real(tensor).clone()
         self.grad.from_torch(tensor)
 
     def to_torch(self, device: Optional[torch.device] = None):
@@ -309,6 +309,7 @@ class EmptyTin(torch.nn.Module):
 
     def forward(self, *input_tensors: torch.Tensor):
         assert self.finished, "Please finish registrations by calling .finish() before using this layer"
+        input_tensors = map(lambda x: x.clone() if x._is_view() else x, input_tensors)
         return TinFunc.apply(self.tin_configs, *input_tensors)
 
 

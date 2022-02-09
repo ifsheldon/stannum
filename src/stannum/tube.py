@@ -59,12 +59,12 @@ class DefaultFieldManager(FieldManager):
 
     def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
         if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
+            tensor = torch.view_as_real(tensor).clone()
         field.from_torch(tensor)
 
     def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
         if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
+            tensor = torch.view_as_real(tensor).clone()
         grad_field.from_torch(tensor)
 
 
@@ -369,6 +369,7 @@ class Tube(torch.nn.Module):
         return self
 
     def forward(self, *input_tensors: torch.Tensor):
+        input_tensors = map(lambda x: x.clone() if x._is_view() else x, input_tensors)
         return TubeFunc.apply(self, *input_tensors)
 
 
