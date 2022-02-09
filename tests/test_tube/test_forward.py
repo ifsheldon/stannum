@@ -10,6 +10,52 @@ def ti_add(arr_a: ti.template(), arr_b: ti.template(), output_arr: ti.template()
         output_arr[i] = arr_a[i] + arr_b[i]
 
 
+@ti.kernel
+def ti_print(arr: ti.template(), out: ti.template()):
+    for i in ti.grouped(arr):
+        x = i[0]
+        y = i[1]
+        print(f"{x} {y} {arr[i]}")
+        out[i] = arr[i]
+
+
+@ti.kernel
+def ti_print_complex(arr: ti.template(), out: ti.template()):
+    for i in arr:
+        real = arr[i][0]
+        imag = arr[i][1]
+        print(f"{real} + {imag}i")
+        out[i] = arr[i]
+
+
+def test_view():
+    ti.init(ti.cpu)
+    a = torch.tensor([[0., 1.], [2., 3.]])
+    a_t = a.T
+    assert a_t._is_view()
+    cpu = torch.device("cpu")
+    tube = Tube(cpu) \
+        .register_input_tensor((2, 2), torch.float, "arr", False) \
+        .register_output_tensor((2, 2), torch.float, "out", False) \
+        .register_kernel(ti_print, ["arr", "out"]) \
+        .finish()
+    out = tube(a_t)
+    assert torch.allclose(out, a_t)
+
+
+def test_complex_values():
+    ti.init(ti.cpu)
+    a = torch.ones(10, dtype=torch.cfloat)
+    cpu = torch.device("cpu")
+    tube = Tube(cpu) \
+        .register_input_tensor((10,), torch.cfloat, "arr", False) \
+        .register_output_tensor((10,), torch.cfloat, "out", False) \
+        .register_kernel(ti_print_complex, ["arr", "out"]) \
+        .finish()
+    out = tube(a)
+    assert torch.allclose(out, a)
+
+
 def test_simple_add():
     ti.init(ti.cpu)
     cpu = torch.device("cpu")
