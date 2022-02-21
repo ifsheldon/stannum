@@ -172,7 +172,8 @@ class TinFunc(torch.autograd.Function):
                 gradient_tensors.append(None)
 
         if any(map(lambda x: x.needs_grad, tin_configs.internal_fields)):
-            eprint("Some internal fields require gradients.\n"
+            eprint("WARNING:\n"
+                   "Some internal fields require gradients.\n"
                    "Although they got gradients during back propagation in the grad field,\n"
                    "values of them will NOT be updated automatically")
         return tuple(gradient_tensors)
@@ -260,7 +261,8 @@ class EmptyTin(torch.nn.Module):
             field.from_torch(value)
         else:
             if self.auto_clear:
-                eprint("You have set auto_clear=True, but the library will not clean internal field for you.\n"
+                eprint("WARNING:\n"
+                       "You have set auto_clear=True, but the library will not clean internal field for you.\n"
                        "A field may contain garbage if it's allocated by ti.FieldsBuilder "
                        "and thus lead to undefined calculation outcomes.\n"
                        "So you may need to do internal_field.fill(0) yourself.")
