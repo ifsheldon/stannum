@@ -95,6 +95,13 @@ class TaichiField:
             tensor = torch.view_as_complex(tensor)
         return tensor
 
+    def clear_field(self):
+        self.field.fill(0)
+
+    def clear_grad(self):
+        if self.needs_grad:
+            self.grad.fill(0)
+
 
 class TinConfigs:
     """
@@ -106,12 +113,14 @@ class TinConfigs:
                  input_fields: List[TaichiField],
                  weight_fields: List[TaichiField],
                  output_fields: List[TaichiField],
-                 device: torch.device):
+                 device: torch.device,
+                 auto_clear: bool):
         self.kernel_bundles: List[TaichiKernelBundle] = ti_kernel_bundles
         self.input_fields: List[TaichiField] = input_fields
         self.internal_fields: List[TaichiField] = weight_fields
         self.output_fields: List[TaichiField] = output_fields
         self.device: torch.device = device
+        self.auto_clear: bool = auto_clear
 
 
 class TinFunc(torch.autograd.Function):
@@ -121,6 +130,9 @@ class TinFunc(torch.autograd.Function):
     def forward(ctx, tin_configs: TinConfigs, *input_tensors: torch.Tensor):
         ctx.tin_configs = tin_configs
         assert len(input_tensors) == len(tin_configs.input_fields)
+        if tin_configs.auto_clear:
+            for ti_field in tin_configs.output_fields:
+                ti_field.clear_field()
         for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
             field.from_torch(input_tensor)
         for kernel_bundle in tin_configs.kernel_bundles:
@@ -143,6 +155,10 @@ class TinFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_outputs: torch.Tensor):
         tin_configs = ctx.tin_configs
+        if tin_configs.auto_clear:
+            for ti_field in tin_configs.input_fields + tin_configs.internal_fields:
+                if ti_field.needs_grad:
+                    ti_field.clear_grad()
         for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
             if output_field.needs_grad:
                 output_field.grad_from_torch(grad_output)
@@ -165,13 +181,15 @@ class TinFunc(torch.autograd.Function):
 class EmptyTin(torch.nn.Module):
     """A Taichi field wrapper that requires no @ti.data_oriented class"""
 
-    def __init__(self, device: torch.device):
+    def __init__(self, device: torch.device, auto_clear: bool = True):
         """
         Init an EmptyTin instance
 
         @param device: torch.device instance
+        @param auto_clear: clear fields before use
         """
         super().__init__()
+        self.auto_clear = auto_clear
         self.input_fields: List[TaichiField] = []
         self.internal_fields: Dict[str, TaichiField] = {}
         self.output_fields: List[TaichiField] = []
@@ -240,6 +258,12 @@ class EmptyTin(torch.nn.Module):
         needs_grad = check_field_needs_grad(field, needs_grad)
         if value is not None:
             field.from_torch(value)
+        else:
+            if self.auto_clear:
+                eprint("You have set auto_clear=True, but the library will not clean internal field for you.\n"
+                       "A field may contain garbage if it's allocated by ti.FieldsBuilder "
+                       "and thus lead to undefined calculation outcomes.\n"
+                       "So you may need to do internal_field.fill(0) yourself.")
         self.internal_fields[field_name] = TaichiField(field, needs_grad, field_name, complex_dtype)
         return self
 
@@ -303,7 +327,8 @@ class EmptyTin(torch.nn.Module):
                                       self.input_fields,
                                       list(self.internal_fields.values()),
                                       self.output_fields,
-                                      self.device)
+                                      self.device,
+                                      self.auto_clear)
         self.finished = True
         return self
 
@@ -315,13 +340,14 @@ class EmptyTin(torch.nn.Module):
 class Tin(EmptyTin):
     """A Taichi field wrapper that requires a @ti.data_oriented class for registering a kernel by name"""
 
-    def __init__(self, data_oriented: Any, device: torch.device):
+    def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = True):
         """
         Init a Tin instance
         @param data_oriented: @ti.data_oriented class instance
         @param device: torch.device instance
+        @param auto_clear: clear fields before use
         """
-        super(Tin, self).__init__(device=device)
+        super(Tin, self).__init__(device=device, auto_clear=auto_clear)
         if not hasattr(data_oriented, "_data_oriented"):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
