@@ -603,7 +603,6 @@ class TubeFunc(torch.autograd.Function):
             return output_tensors
 
     @staticmethod
-    @once_differentiable
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
         tube: Tube = ctx.tube
         batch_num = ctx.batch_num
@@ -675,5 +674,4 @@ class TubeFunc(torch.autograd.Function):
                         input_grads.append(torch.stack(grad_per_input, dim=0))
                     else:
                         input_grads.append(torch.stack(grad_per_input, dim=0).sum(dim=0))
-            ctx.snode.destroy()
             return tuple(input_grads)
