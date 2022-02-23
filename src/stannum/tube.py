@@ -7,7 +7,6 @@ from taichi._lib.core.taichi_core import DataType as TiDataType
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
 from functools import partial
-from torch.autograd.function import once_differentiable
 
 from .utils import is_kernel, autofill_kernel_name_available
 from .auxiliary import FieldManager, SNode
