@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="stannum",
-    version="0.4.4",
+    version="0.5.0",
     author="Feng Liang",
     author_email="feng.liang@kaust.edu.sa",
     description="PyTorch wrapper for Taichi data-oriented class",
