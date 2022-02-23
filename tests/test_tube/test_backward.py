@@ -25,6 +25,21 @@ def test_simple_backward():
     assert torch.allclose(a.grad, torch.ones_like(a) * 2)
 
 
+def test_simple_backward_with_eager_tube_func():
+    ti.init(ti.cpu)
+    a = torch.ones(10, requires_grad=True)
+    tube = Tube(persistent_field=False) \
+        .register_input_tensor((10,), torch.float32, "arr") \
+        .register_output_tensor((10,), torch.float32, "out", True) \
+        .register_kernel(mul, ["arr", "out"]) \
+        .finish()
+    out = tube(a)
+    loss = out.sum()
+    loss.backward()
+    assert torch.allclose(out, torch.ones_like(out) * 2)
+    assert torch.allclose(a.grad, torch.ones_like(a) * 2)
+
+
 @ti.kernel
 def mul_complex(arr0: ti.template(),
                 arr1: ti.template(),
@@ -36,7 +51,6 @@ def mul_complex(arr0: ti.template(),
                 out: ti.template()):
     for i in arr0:
         out[i] = (arr0[i] + arr1[i] + arr2[i] + arr3[i] + arr4[i] + arr5[i] + arr6[i]) * 2.0
-
 
 # Super slow, not on auto test
 # def test_loop_backward():

@@ -25,6 +25,21 @@ def test_simple_add():
     assert torch.allclose(out, torch.full_like(out, 2.))
 
 
+def test_simple_add_eager_mode():
+    ti.init(ti.cpu)
+    cpu = torch.device("cpu")
+    a = torch.ones(10)
+    b = torch.ones(10)
+    tube = Tube(cpu, persistent_field=False) \
+        .register_input_tensor((10,), torch.float32, "arr_a", False) \
+        .register_input_tensor((10,), torch.float32, "arr_b", False) \
+        .register_output_tensor((10,), torch.float32, "output_arr", False) \
+        .register_kernel(ti_add, ["arr_a", "arr_b", "output_arr"]) \
+        .finish()
+    out = tube(a, b)
+    assert torch.allclose(out, torch.full_like(out, 2.))
+
+
 def test_any_dims_match():
     ti.init(ti.cpu)
     cpu = torch.device("cpu")
@@ -97,6 +112,23 @@ def test_scalar():
     ti.init(ti.cpu)
     cpu = torch.device("cpu")
     tube = Tube(cpu) \
+        .register_input_tensor((10,), torch.float32, "arr") \
+        .register_input_tensor((), torch.float32, "scalar") \
+        .register_output_tensor((10,), torch.float32, "out", True) \
+        .register_kernel(add_scalar, ["arr", "scalar", "out"]) \
+        .finish()
+    a = torch.ones(10, requires_grad=True)
+    b = torch.tensor(1.0, requires_grad=True)
+    out = tube(a, b)
+    out.sum().backward()
+    assert torch.allclose(out, torch.full_like(out, 2.0))
+    assert b.grad == 10.
+
+
+def test_scalar_eager_mode():
+    ti.init(ti.cpu)
+    cpu = torch.device("cpu")
+    tube = Tube(cpu, persistent_field=False) \
         .register_input_tensor((10,), torch.float32, "arr") \
         .register_input_tensor((), torch.float32, "scalar") \
         .register_output_tensor((10,), torch.float32, "out", True) \
