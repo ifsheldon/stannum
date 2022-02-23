@@ -5,6 +5,42 @@ from taichi import __version__ as __ti_version
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
+from taichi._lib.core.taichi_core import DataType as TiDataType
+import torch
+import taichi as ti
+
+
+def to_taichi_type(dt):
+    """Convert numpy or torch data type to its counterpart in taichi.
+
+    Args:
+        dt (DataType): The desired data type to convert.
+
+    Returns:
+        DataType: The counterpart data type in taichi.
+
+    """
+    if type(dt) == TiDataType:
+        return dt
+
+    if dt == torch.float32:
+        return ti.f32
+    if dt == torch.float64:
+        return ti.f64
+    if dt == torch.int32:
+        return ti.i32
+    if dt == torch.int64:
+        return ti.i64
+    if dt == torch.int8:
+        return ti.i8
+    if dt == torch.int16:
+        return ti.i16
+    if dt == torch.uint8:
+        return ti.u8
+    if dt == torch.float16:
+        return ti.f16
+
+    raise AssertionError(f"Not support type {dt}")
 
 
 def eprint(*args, **kwargs):
