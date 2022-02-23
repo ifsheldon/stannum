@@ -371,6 +371,39 @@ class Tube(torch.nn.Module):
         return TubeFunc.apply(self, *input_tensors)
 
 
+def concretize(device: torch.device,
+               fields_builder: ti.FieldsBuilder,
+               needs_grad: bool,
+               concrete_shape: Tuple[int, ...],
+               seal: Seal) -> ConcreteField:
+    concrete_field = seal.concretize(concrete_shape, fields_builder, device, needs_grad)
+    return concrete_field
+
+
+def select_tensor(seals: List[Seal], tensors: Tuple[torch.Tensor], batch_idx: int) -> List[torch.Tensor]:
+    assert len(seals) == len(tensors)
+    selected_tensors = []
+    for seal, tensor in zip(seals, tensors):
+        if seal.batched:
+            selected_tensors.append(tensor[batch_idx])
+        else:
+            selected_tensors.append(tensor)
+    return selected_tensors
+
+
+def select_concrete_field(seals: List[Seal],
+                          concrete_fields: List[Union[ConcreteField, List[ConcreteField]]],
+                          batch_idx: int) -> List[ConcreteField]:
+    assert len(seals) == len(concrete_fields)
+    selected_concrete_fields = []
+    for seal, concrete_field in zip(seals, concrete_fields):
+        if seal.batched:
+            selected_concrete_fields.append(concrete_field[batch_idx])
+        else:
+            selected_concrete_fields.append(concrete_field)
+    return selected_concrete_fields
+
+
 def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
                                 input_placeholders: List[Seal],
                                 intermediate_fields: List[Seal],
@@ -459,26 +492,6 @@ class TubeFunc(torch.autograd.Function):
         return selected_concrete_fields
 
     @staticmethod
-    def select_tensor(seals: List[Seal], tensors: Tuple[torch.Tensor], batch_idx: int) -> List[torch.Tensor]:
-        assert len(seals) == len(tensors)
-        selected_tensors = []
-        for seal, tensor in zip(seals, tensors):
-            if seal.batched:
-                selected_tensors.append(tensor[batch_idx])
-            else:
-                selected_tensors.append(tensor)
-        return selected_tensors
-
-    @staticmethod
-    def concretize(device: torch.device,
-                   fields_builder: ti.FieldsBuilder,
-                   needs_grad: bool,
-                   concrete_shape: Tuple[int, ...],
-                   seal: Seal) -> ConcreteField:
-        concrete_field = seal.concretize(concrete_shape, fields_builder, device, needs_grad)
-        return concrete_field
-
-    @staticmethod
     def forward(ctx, tube: Tube, *input_tensors: torch.Tensor):
         assert len(input_tensors) == len(tube.input_placeholders)
         input_seals = tube.input_placeholders
@@ -493,17 +506,17 @@ class TubeFunc(torch.autograd.Function):
             for t in input_tensors:
                 assert t.device == device, f"Tensors not on the device {device}"
 
-        fb = ti.FieldsBuilder()
-        input_tensor_shapes = list(map(lambda x: x.shape, input_tensors))
+        input_tensor_shapes = [x.shape for x in input_tensors]
         concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes, batch_num = unify_and_concretize_shapes(
             input_tensor_shapes,
             input_seals, intermediate_seals, output_seals)
-        input_field_concretizer = partial(TubeFunc.concretize, device, fb)
-        other_field_concretizer = partial(TubeFunc.concretize, device, fb, None)
+        fb = ti.FieldsBuilder()
+        input_field_concretizer = partial(concretize, device, fb)
+        other_field_concretizer = partial(concretize, device, fb, None)
         if batch_num is None:
             input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
                 map(input_field_concretizer,
-                    map(lambda x: x.requires_grad, input_tensors),
+                    [x.requires_grad for x in input_tensors],
                     concrete_input_shapes,
                     input_seals))
             intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
@@ -559,7 +572,7 @@ class TubeFunc(torch.autograd.Function):
                 output_concrete_fields.append(concrete_fields)
 
             snode = fb.finalize()
-            scf = TubeFunc.select_concrete_field
+            scf = select_concrete_field
             output_tensor_batches = []
             for batch_idx in range(batch_num):
                 concrete_input_field_batch = scf(input_seals, input_concrete_fields, batch_idx)
@@ -573,7 +586,7 @@ class TubeFunc(torch.autograd.Function):
                 }
                 for field in concrete_intermediate_field_batch + concrete_output_field_batch:
                     field.clear_field()
-                input_tensor_batch = TubeFunc.select_tensor(input_seals, input_tensors, batch_idx)
+                input_tensor_batch = select_tensor(input_seals, input_tensors, batch_idx)
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
                 for kernel_bundle in tube.kernel_bundles:
@@ -632,13 +645,12 @@ class TubeFunc(torch.autograd.Function):
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
                 else:
                     gradient_tensors.append(None)
-            ctx.snode.destroy()
             return tuple(gradient_tensors)
         else:
-            scf = TubeFunc.select_concrete_field
+            scf = select_concrete_field
             gradients = []
             for batch_idx in range(batch_num):
-                grad_output_batch = TubeFunc.select_tensor(output_seals, grad_outputs, batch_idx)
+                grad_output_batch = select_tensor(output_seals, grad_outputs, batch_idx)
                 output_concrete_field_batch = scf(output_seals, output_concrete_fields, batch_idx)
                 for grad_tensor, output_concrete_field in zip(grad_output_batch, output_concrete_field_batch):
                     if output_concrete_field.requires_grad:
