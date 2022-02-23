@@ -11,7 +11,7 @@ def mul(arr: ti.template(), out: ti.template()):
         out[i] = arr[i] * 2.0
 
 
-def test_eager_mode_performance():
+def persistent_vs_eager_mode():
     ti.init(ti.cpu)
     eager_tube = Tube(persistent_field=False) \
         .register_input_tensor((2,), torch.float32, "arr") \
@@ -52,3 +52,7 @@ def test_eager_mode_performance():
     end = time()
     assert torch.allclose(a.grad, torch.ones_like(a) * 2 * repeats)
     print(f"{repeats=}, took {end - start} seconds, avg = {(end - start) / repeats}")
+
+
+if __name__ == "__main__":
+    persistent_vs_eager_mode()
