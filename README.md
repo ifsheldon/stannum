@@ -114,7 +114,7 @@ The order of input tensors should match the input fields of a kernel.
 #### Automatic batching
 Automatic batching is done simply by running kernels `batch` times. The batch number is determined by the leading dimension of tensors of registered shape `(None, ...)`.
 
-It's required that if any input tensors or intermediate fields are batched (which means they have registered the first dimension to be `None`), all output tensors must be registered as batched.
+It's required that if any input tensors are batched (which means they have registered the first dimension to be `None`), all intermediate fields and output tensors must be registered as batched.
 
 #### Examples
 Simple one without negative indices or batch dimension:

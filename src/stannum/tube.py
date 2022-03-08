@@ -301,6 +301,10 @@ class Tube(torch.nn.Module):
                     field_manager=field_manager,
                     requires_grad=needs_grad,
                     name=name)
+        if self.batched:
+            assert seal.batched, \
+                "Already registered batched inputs, so intermediate field should also be batched, " \
+                "which means dims[0] must be None"
         if seal.batched:
             self.batched = True
         self.intermediate_field_placeholders.append(seal)
