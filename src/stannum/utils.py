@@ -9,6 +9,8 @@ from taichi._lib.core.taichi_core import DataType as TiDataType
 import torch
 import taichi as ti
 
+need_auto_clearing_fields = __ti_version < (0, 9, 1)
+
 
 def to_taichi_type(dt):
     """Convert numpy or torch data type to its counterpart in taichi.

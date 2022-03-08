@@ -2,7 +2,7 @@ import taichi as ti
 import torch
 from taichi.lang.impl import axes
 from typing import Optional, Callable, Union, Tuple, List, Iterable, Dict, Any
-from .utils import to_taichi_type
+from .utils import to_taichi_type, need_auto_clearing_fields
 from taichi._lib.core.taichi_core import DataType as TiDataType
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
@@ -530,9 +530,10 @@ class EagerTubeFunc(torch.autograd.Function):
                     input_concrete_fields + intermediate_concrete_fields + output_concrete_fields)
             }
             snode = fb.finalize()
-            # clear fields
-            for field in intermediate_concrete_fields + output_concrete_fields:
-                field.clear_field()
+            if need_auto_clearing_fields:
+                # clear fields due to uninitialized memory in old Taichi
+                for field in intermediate_concrete_fields + output_concrete_fields:
+                    field.clear_field()
 
             # load tensor to field
             for tensor, concrete_input_field in zip(input_tensors, input_concrete_fields):
@@ -593,9 +594,10 @@ class EagerTubeFunc(torch.autograd.Function):
                     zip(input_seals + intermediate_seals + output_seals,
                         concrete_input_field_batch + concrete_intermediate_field_batch + concrete_output_field_batch)
                 }
-                # clear fields
-                for field in concrete_intermediate_field_batch + concrete_output_field_batch:
-                    field.clear_field()
+                if need_auto_clearing_fields:
+                    # clear fields due to uninitialized memory in old Taichi
+                    for field in concrete_intermediate_field_batch + concrete_output_field_batch:
+                        field.clear_field()
                 input_tensor_batch = select_tensor(input_seals, input_tensors, batch_idx)
                 # load tensor to fields
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
@@ -687,9 +689,10 @@ class EagerTubeFunc(torch.autograd.Function):
                 zip(input_seals + intermediate_seals + output_seals,
                     input_concrete_fields + intermediate_concrete_fields + output_concrete_fields)
             }
-            # clear grad field
-            for field in intermediate_concrete_fields + input_concrete_fields:
-                field.clear_grad()
+            if need_auto_clearing_fields:
+                # clear grad field due to uninitialized memory in old Taichi
+                for field in intermediate_concrete_fields + input_concrete_fields:
+                    field.clear_grad()
             # backward pass
             for kernel_bundle in reversed(tube.kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
@@ -761,9 +764,16 @@ class EagerTubeFunc(torch.autograd.Function):
                     zip(input_seals + intermediate_seals + output_seals,
                         concrete_input_field_batch + concrete_intermediate_field_batch + concrete_output_field_batch)
                 }
-                # clear grad fields
-                for field in concrete_intermediate_field_batch + concrete_input_field_batch:
-                    field.clear_grad()
+                if need_auto_clearing_fields:
+                    # clear grad fields due to uninitialized memory on Taichi
+                    for field in concrete_intermediate_field_batch + concrete_input_field_batch:
+                        field.clear_grad()
+                else:
+                    # clear grad fields due to mixing batched and non-batched inputs
+                    for seal, field in zip(input_seals + intermediate_seals,
+                                           concrete_input_field_batch + concrete_intermediate_field_batch):
+                        if not seal.batched:
+                            field.clear_grad()
                 # backward pass
                 for kernel_bundle in reversed(tube.kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
@@ -845,8 +855,10 @@ class PersistentTubeFunc(torch.autograd.Function):
                     input_concrete_fields + intermediate_concrete_fields + output_concrete_fields)
             }
             snode = fb.finalize()
-            for field in intermediate_concrete_fields + output_concrete_fields:
-                field.clear_field()
+            if need_auto_clearing_fields:
+                # clear grad field due to uninitialized memory in old Taichi
+                for field in intermediate_concrete_fields + output_concrete_fields:
+                    field.clear_field()
 
             for tensor, concrete_input_field in zip(input_tensors, input_concrete_fields):
                 concrete_input_field.from_tensor(tensor)
@@ -899,8 +911,10 @@ class PersistentTubeFunc(torch.autograd.Function):
                     zip(input_seals + intermediate_seals + output_seals,
                         concrete_input_field_batch + concrete_intermediate_field_batch + concrete_output_field_batch)
                 }
-                for field in concrete_intermediate_field_batch + concrete_output_field_batch:
-                    field.clear_field()
+                if need_auto_clearing_fields:
+                    # clear grad field due to uninitialized memory in old Taichi
+                    for field in concrete_intermediate_field_batch + concrete_output_field_batch:
+                        field.clear_field()
                 input_tensor_batch = select_tensor(input_seals, input_tensors, batch_idx)
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
@@ -949,8 +963,10 @@ class PersistentTubeFunc(torch.autograd.Function):
                 zip(input_seals + intermediate_seals + output_seals,
                     input_concrete_fields + intermediate_concrete_fields + output_concrete_fields)
             }
-            for field in intermediate_concrete_fields + input_concrete_fields:
-                field.clear_grad()
+            if need_auto_clearing_fields:
+                # clear grad field due to uninitialized memory in old Taichi
+                for field in intermediate_concrete_fields + input_concrete_fields:
+                    field.clear_grad()
             for kernel_bundle in reversed(tube.kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
@@ -978,8 +994,17 @@ class PersistentTubeFunc(torch.autograd.Function):
                     zip(input_seals + intermediate_seals + output_seals,
                         input_concrete_field_batch + intermediate_concrete_field_batch + output_concrete_field_batch)
                 }
-                for field in intermediate_concrete_field_batch + input_concrete_field_batch:
-                    field.clear_grad()
+
+                if need_auto_clearing_fields:
+                    # clear grad fields due to uninitialized memory on Taichi
+                    for field in intermediate_concrete_field_batch + input_concrete_field_batch:
+                        field.clear_grad()
+                else:
+                    # clear grad fields due to mixing batched and non-batched inputs
+                    for seal, field in zip(input_seals + intermediate_seals,
+                                           input_concrete_field_batch + intermediate_concrete_field_batch):
+                        if not seal.batched:
+                            field.clear_grad()
                 for kernel_bundle in reversed(tube.kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
                 grad_tensor_batch = []

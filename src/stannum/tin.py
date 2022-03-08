@@ -1,5 +1,5 @@
 import torch
-from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, eprint
+from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, eprint, need_auto_clearing_fields
 from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
@@ -182,7 +182,7 @@ class TinFunc(torch.autograd.Function):
 class EmptyTin(torch.nn.Module):
     """A Taichi field wrapper that requires no @ti.data_oriented class"""
 
-    def __init__(self, device: torch.device, auto_clear: bool = True):
+    def __init__(self, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
         """
         Init an EmptyTin instance
 
@@ -262,7 +262,8 @@ class EmptyTin(torch.nn.Module):
         else:
             if self.auto_clear:
                 eprint("WARNING:\n"
-                       "You have set auto_clear=True, but the library will not clean internal field for you.\n"
+                       "You have set auto_clear=True (due to your setting or using legacy Taichi < 0.9.1),\n"
+                       "but the library will not clean internal field for you.\n"
                        "A field may contain garbage if it's allocated by ti.FieldsBuilder "
                        "and thus lead to undefined calculation outcomes.\n"
                        "So you may need to do internal_field.fill(0) yourself.")
@@ -342,7 +343,7 @@ class EmptyTin(torch.nn.Module):
 class Tin(EmptyTin):
     """A Taichi field wrapper that requires a @ti.data_oriented class for registering a kernel by name"""
 
-    def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = True):
+    def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
         """
         Init a Tin instance
         @param data_oriented: @ti.data_oriented class instance
