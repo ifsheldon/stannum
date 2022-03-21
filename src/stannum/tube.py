@@ -186,7 +186,8 @@ class Tube(torch.nn.Module):
 
     def __init__(self,
                  device: Optional[torch.device] = None,
-                 persistent_field: bool = True):
+                 persistent_field: bool = True,
+                 enable_backward: bool = True):
         """
         Init a tube
 
@@ -195,6 +196,8 @@ class Tube(torch.nn.Module):
         If True, created fields will not be destroyed until compute graph is cleaned,
         otherwise they will be destroyed right after forward pass is done and re-created in backward pass.
         Having two modes is due to Taichi's performance issue, see https://github.com/taichi-dev/taichi/pull/4356
+        @param enable_backward: whether or not to enable backward gradient computation, disable it will have performance
+        improvement in forward pass, but attempting to do backward computation will cause runtime error.
         """
         super().__init__()
         self.input_placeholders: List[Seal] = []
@@ -206,7 +209,15 @@ class Tube(torch.nn.Module):
         self._finished: bool = False
         self.batched: bool = False
         self.kernel_bundle_dict: Dict[str, TubeKernelBundle] = {}
-        self.func: torch.autograd.Function = PersistentTubeFunc if persistent_field else EagerTubeFunc
+        if not enable_backward:
+            func = EagerTubeFunc
+        else:
+            if persistent_field:
+                func = PersistentTubeFunc
+            else:
+                func = EagerTubeFunc
+        self.func: torch.autograd.Function = func
+        self.enable_backward: bool = enable_backward
 
     def register_input_tensor(self,
                               dims: Iterable[Union[int, None]],
@@ -494,6 +505,10 @@ class EagerTubeFunc(torch.autograd.Function):
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
+        if not tube.enable_backward:
+            for i, t in enumerate(input_tensors):
+                assert not t.requires_grad, f"enable_backward = False, " \
+                                            f"so the {i}th of input tensors cannot require grad, detach it first"
         # basic checking
         if tube.device is None:
             device = input_tensors[0].device
@@ -644,10 +659,11 @@ class EagerTubeFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
+        tube = ctx.tube
+        assert tube.enable_backward, "Attempting to run backward computation when enable_backward = False"
         input_tensor_num = ctx.input_tensor_num
         all_tensors = ctx.saved_tensors
         input_tensors = all_tensors[:input_tensor_num]
-        tube = ctx.tube
         batch_num = ctx.batch_num
         concrete_input_shapes = ctx.concrete_input_shapes
         concrete_intermediate_shapes = ctx.concrete_intermediate_shapes
