@@ -234,7 +234,7 @@ Install `stannum` with `pip` by
 Make sure you have the following installed:
 
 * PyTorch
-* latest Taichi
+* latest Taichi: For performance concerns, we strongly recommend to use Taichi>=0.9.1 and if possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.
 
 ## TODOs
 
