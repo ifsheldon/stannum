@@ -9,6 +9,7 @@ from taichi._lib.core.taichi_core import DataType as TiDataType
 import torch
 import taichi as ti
 
+# Before Taichi 0.9.1, memory of fields is not initialized after creation, causing some undefined behaviors; fixed in 0.9.1
 need_auto_clearing_fields = __ti_version < (0, 9, 1)
 
 
