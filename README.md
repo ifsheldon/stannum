@@ -1,3 +1,5 @@
+![IMG_2154](logo.PNG)
+
 # Stannum
 
 ![Gradient Tests](https://github.com/ifsheldon/stannum/actions/workflows/run_tests.yaml/badge.svg)
@@ -88,6 +90,7 @@ Acceptable dimensions of tensors to be registered:
 
 Registration order:
 Input tensors/intermediate fields/output tensors must be registered first, and then kernel.
+
 ```python
 @ti.kernel
 def ti_add(arr_a: ti.template(), arr_b: ti.template(), output_arr: ti.template()):
@@ -214,8 +217,7 @@ In practice, we now have these limitations:
     * If it's a `ScalarField`, the last dimension of it should be `2`,
       like `field = ti.field(ti.f32, shape=(2,3,4,5,2))`
     * The above examples accept tensors of `dtype=torch.cfloat, shape=(2,3,4,5)`
-* The semantic of complex numbers is not preserved in kernels, so you are manipulating regular fields, and as a
-  consequence, you need to implement complex number operators yourself
+* The semantic of complex numbers is not preserved in kernels, so you are manipulating regular fields, and as a consequence, you need to implement complex number operators yourself
     * Example:
   ```python
   @ti.kernel
