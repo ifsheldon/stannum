@@ -1,6 +1,12 @@
 name: Gradient Tests
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - tests/**
 
 jobs:
   build:
@@ -21,7 +27,7 @@ jobs:
           pip install pytest
           pip install taichi
           pip install pytest-cov
-          pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+          pip install torch==1.11.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Test with pytest
         run: |
