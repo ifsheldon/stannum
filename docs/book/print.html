@@ -1,0 +1,788 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Stannum</title>
+        <meta name="robots" content="noindex" />
+
+
+        <!-- Custom HTML head -->
+        
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="tin.html"><strong aria-hidden="true">2.</strong> Tin</a></li><li class="chapter-item expanded "><a href="tube.html"><strong aria-hidden="true">3.</strong> Tube</a></li><li class="chapter-item expanded "><a href="complex_numbers.html"><strong aria-hidden="true">4.</strong> Complex Numbers</a></li><li class="chapter-item expanded "><a href="contribution.html"><strong aria-hidden="true">5.</strong> Contribution</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Stannum</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="stannum"><a class="header" href="#stannum">Stannum</a></h1>
+<div align="center">
+  <img width="300px" src="https://github.com/ifsheldon/stannum/raw/main/logo.PNG"/>
+</div>
+<p><strong>Fusing Taichi into PyTorch</strong></p>
+<h2 id="why-stannum"><a class="header" href="#why-stannum">Why Stannum?</a></h2>
+<p>In differentiable rendering including neural rendering, rendering algorithms are transferred to the field of computer vision, but some rendering operations (e.g., ray tracing and direct volume rendering) are not easy to be expressed in tensor operations but in kernels. Differentiable kernels of Taichi enables fast, efficient and differentiable implementation of rendering algorithms while tensor operators provides math expressiveness. </p>
+<p>Stannum bridges Taichi and PyTorch to have advantage of both kernel-based and operator-based parallelism.</p>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<p>Install <code>stannum</code> with <code>pip</code> by</p>
+<p><code>python -m pip install stannum</code></p>
+<p>Make sure you have the following installed:</p>
+<ul>
+<li>PyTorch</li>
+<li><strong>latest</strong> Taichi
+<ul>
+<li>For performance concerns, we strongly recommend to use Taichi&gt;=0.9.1</li>
+<li>If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.</li>
+</ul>
+</li>
+</ul>
+<h2 id="differentiability"><a class="header" href="#differentiability">Differentiability</a></h2>
+<p>Stannum does <strong>NOT</strong> check the differentiability of your kernels, so you may not get correct gradients if your kernel is not differentiable. Please refer to <a href="https://docs.taichi-lang.org/docs/differentiable_programming">Differentiable Programming of Taichi</a> for more information.</p>
+<h2 id="bugs--issues"><a class="header" href="#bugs--issues">Bugs &amp; Issues</a></h2>
+<p>Please feel free to file issues on <a href="https://github.com/ifsheldon/stannum">Github</a>. If a runtime error occurs from the dependencies of <code>stannum</code>, you may also want to check the <a href="https://github.com/ifsheldon/stannum/issues/11">upstream breaking change tracker</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="tin"><a class="header" href="#tin">Tin</a></h1>
+<p><code>Tin</code> and <code>EmptyTin</code> are thinest layers that bridge Taichi and PyTorch. </p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<p>To use them, you will need:</p>
+<ul>
+<li>a Taichi kernel or a Taichi data-oriented-class instance</li>
+<li>Taichi fields</li>
+<li>and registration as shown below</li>
+</ul>
+<pre><code class="language-python">from stannum import Tin
+import torch
+
+data_oriented = TiClass()  # some Taichi data-oriented class 
+device = torch.device(&quot;cpu&quot;)
+kernel_args = (1.0,)
+tin_layer = Tin(data_oriented, device=device)
+.register_kernel(data_oriented.forward_kernel, *kernel_args, kernel_name=&quot;forward&quot;)  # on old Taichi
+# .register_kernel(data_oriented.forward_kernel, *kernel_args)  # on new Taichi
+.register_input_field(data_oriented.input_field)
+.register_output_field(data_oriented.output_field)
+.register_internal_field(data_oriented.weight_field, name=&quot;field name&quot;)
+.finish()  # finish() is required to finish construction
+output = tin_layer(input_tensor)
+</code></pre>
+<p>It is <strong>NOT</strong> necessary to have a <code>@ti.data_oriented</code> class as long as you correctly register the fields that your
+kernel needs for forward and backward calculation.</p>
+<p>Please use <code>EmptyTin</code> in this case, for example:</p>
+<pre><code class="language-python">from stannum import EmptyTin
+import torch
+import taichi as ti
+
+input_field = ti.field(ti.f32)
+output_field = ti.field(ti.f32)
+internal_field = ti.field(ti.f32)
+
+
+@ti.kernel
+def some_kernel():
+    output_field[None] = input_field[None] + internal_field[None]
+
+
+device = torch.device(&quot;cpu&quot;)
+kernel_args = (1.0,)
+tin_layer = EmptyTin(device)\
+    .register_kernel(some_kernel, *kernel_args)\
+    .register_input_field(input_field)\
+    .register_output_field(output_field)\
+    .register_internal_field(internal_field, name=&quot;field name&quot;)\
+    .finish()  # finish() is required to finish construction
+output = tin_layer(input_tensor)
+</code></pre>
+<h2 id="restrictions--warning"><a class="header" href="#restrictions--warning">Restrictions &amp; Warning</a></h2>
+<p>For input and output, the restrictions are:</p>
+<ul>
+<li>We can register multiple <code>input_field</code>, <code>output_field</code>, <code>internal_field</code>.</li>
+<li>At least one <code>input_field</code> and one <code>output_field</code> should be registered.</li>
+<li>The order of input tensors must match the registration order of <code>input_field</code>s.</li>
+<li>The output order will align with the registration order of <code>output_field</code>s.</li>
+<li>Kernel args must be acceptable by Taichi kernels and they will not get gradients.</li>
+</ul>
+<p>Be warned that it is <strong>YOUR</strong> responsibility to create and manage fields and if you don’t manage fields properly, memory leaks and read-after-free of fields can happen.</p>
+<h2 id="apis"><a class="header" href="#apis">APIs</a></h2>
+<h3 id="constructors"><a class="header" href="#constructors">Constructors</a></h3>
+<p><code>Tin</code>:</p>
+<pre><code class="language-python">def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+    &quot;&quot;&quot;
+        Init a Tin instance
+        @param data_oriented: @ti.data_oriented class instance
+        @param device: torch.device instance
+        @param auto_clear: clear fields before use
+        &quot;&quot;&quot;
+</code></pre>
+<p><code>EmptyTin</code>:</p>
+<pre><code class="language-python">def __init__(self, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+    &quot;&quot;&quot;
+        Init an EmptyTin instance
+
+        @param device: torch.device instance
+        @param auto_clear: clear fields before use
+        &quot;&quot;&quot;
+</code></pre>
+<p>If <code>auto_clear</code> is <code>True</code>, then all the registered fields will be cleared before running the kernel(s), which prevents some undefined behaviors due to un-initialized memory of fields before Taichi <code>0.9.1</code>. After Taichi <code>0.9.1</code>, the memory of fields is automatically cleared after creation, so <code>auto_clear</code> is not necessary anymore. But it is still configurable if desired.</p>
+<h3 id="registrations"><a class="header" href="#registrations">Registrations</a></h3>
+<h4 id="register-kernels"><a class="header" href="#register-kernels">Register Kernels</a></h4>
+<p><code>EmptyTin</code>:</p>
+<pre><code class="language-python">def register_kernel(self, kernel: Callable, *kernel_args: Any, kernel_name: Optional[str] = None):
+    &quot;&quot;&quot;
+        Register a kernel for forward calculation
+
+        @param kernel: Taichi kernel
+        @param kernel_args: arguments for the kernel
+        @param kernel_name: kernel name, optional for new Taichi, compulsory for old Taichi
+        @return: self
+        &quot;&quot;&quot;
+</code></pre>
+<p><code>Tin</code>:</p>
+<pre><code class="language-python">def register_kernel(self, kernel: Union[Callable, str], *kernel_args: Any, kernel_name: Optional[str] = None):
+    &quot;&quot;&quot;
+        Register a kernel for forward calculation
+        @param kernel: kernel function or kernel name
+        @param kernel_args: args for the kernel, optional
+        @param kernel_name: kernel name, optional for new Taichi, compulsory for old Taichi
+        @return: self
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="register-fields"><a class="header" href="#register-fields">Register Fields</a></h3>
+<p>Register input fields:</p>
+<pre><code class="language-python">def register_input_field(self, field: Union[ScalarField, MatrixField],
+                         name: Optional[str] = None,
+                         needs_grad: Optional[bool] = None,
+                         complex_dtype: bool = False):
+    &quot;&quot;&quot;
+        Register an input field which requires a tensor input in the forward calculation
+
+        @param field: Taichi field
+        @param name: name of this field, default: &quot;input_field_ith&quot;
+        @param needs_grad: whether the field needs grad, `None` for automatic configuration
+        @param complex_dtype: whether the input tensor that is going to be filled into this field is complex numbers
+        @return: self
+        &quot;&quot;&quot;
+</code></pre>
+<p>Register internal fields that are used to store intermediate values if multiple kernels are used:</p>
+<pre><code class="language-python">def register_internal_field(self, field: Union[ScalarField, MatrixField],
+                            needs_grad: Optional[bool] = None,
+                            name: Optional[str] = None,
+                            value: Optional[torch.Tensor] = None,
+                            complex_dtype: bool = False):
+    &quot;&quot;&quot;
+        Register a field that serves as weights internally and whose values are required by the kernel function
+
+        @param field: Taichi field
+        @param needs_grad: whether the field needs grad, `None` for automatic configuration
+        @param name: name for the field, facilitating later value setting, `None` for default number naming
+        @param value: optional initial values from a tensor
+        @param complex_dtype: whether the input tensor that is going to be filled into this field is complex numbers
+        @return: self
+        &quot;&quot;&quot;
+</code></pre>
+<p>Register output fields:</p>
+<pre><code class="language-python">def register_output_field(self, field: Union[ScalarField, MatrixField],
+                          name: Optional[str] = None,
+                          needs_grad: Optional[bool] = None,
+                          complex_dtype: bool = False):
+    &quot;&quot;&quot;
+        Register an output field that backs an output tensor in the forward calculation
+
+        @param field: Taichi field
+        @param name: name of this field, default: &quot;output_field_ith&quot;
+        @param needs_grad: whether the field needs grad, `None` for automatic configuration
+        @param complex_dtype: whether the input tensor that is going to be filled into this field is complex numbers
+        @return: self
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="setters"><a class="header" href="#setters">Setters</a></h3>
+<h4 id="internal-fields"><a class="header" href="#internal-fields">Internal fields</a></h4>
+<p>The values of internal fields can be set by:</p>
+<pre><code class="language-python">def set_internal_field(self, field_name: Union[str, int], tensor: torch.Tensor):
+    &quot;&quot;&quot;
+        Sets the value of an internal field from a tensor
+
+        @param field_name: integer(when using default number naming) or string name
+        @param tensor: values for the field
+        @return: None
+        &quot;&quot;&quot;
+</code></pre>
+<h4 id="kernel-arguments"><a class="header" href="#kernel-arguments">Kernel Arguments</a></h4>
+<p>Kernels may need arguments that do not need gradients, then you can set extra arguments with <code>Tin/EmptyTin.set_kernelargs()</code> or set extra arguments in <code>Tin/EmptyTin.register_kernel()</code></p>
+<pre><code class="language-python">def set_kernel_args(self, kernel: Union[Callable, str], *kernel_args: Any):
+    &quot;&quot;&quot;
+        Set args for a kernel
+        @param kernel: kernel function or its name
+        @param kernel_args: kernel arguments
+        &quot;&quot;&quot;
+</code></pre>
+<p>One example is shown below. Note that the kernel has already contains references to fields, which differs from the case in <code>Tube</code>.</p>
+<pre><code class="language-python">input_field = ti.field(ti.f32)
+output_field = ti.field(ti.f32)
+internal_field = ti.field(ti.f32)
+
+
+@ti.kernel
+def some_kernel(adder: float):
+    output_field[None] = input_field[None] + internal_field[None] + adder
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="tube"><a class="header" href="#tube">Tube</a></h1>
+<p><code>Tube</code>, compared to <code>Tin</code>, helps you:</p>
+<ul>
+<li>create necessary fields</li>
+<li>manage fields</li>
+<li>(optionally) do automatic batching</li>
+</ul>
+<p>So, <code>Tube</code> is more flexible and convenient, but it also introduces some overhead.</p>
+<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<p>All you need to do is to register:</p>
+<ul>
+<li>Input/intermediate/output <strong>tensor shapes</strong> instead of fields</li>
+<li>At least one kernel that takes the following as arguments
+<ul>
+<li>Taichi fields: correspond to tensors (may or may not require gradients)</li>
+<li>(Optional) Extra arguments: will NOT receive gradients</li>
+</ul>
+</li>
+</ul>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<p>Registration order: Input tensors/intermediate fields/output tensors must be registered first, and then kernel.</p>
+<p>When registering a kernel, a list of field/tensor names is required, for example, the above <code>[&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]</code>.</p>
+<p>This list should correspond to the fields in the arguments of a kernel (e.g., below <code>ti_add()</code>).</p>
+<p>The order of input tensors should match the input fields of a kernel.</p>
+<p>A valid example is shown below:</p>
+<pre><code class="language-python">@ti.kernel
+def ti_add(arr_a: ti.template(), arr_b: ti.template(), output_arr: ti.template()):
+    for i in arr_a:
+        output_arr[i] = arr_a[i] + arr_b[i]
+
+ti.init(ti.cpu)
+cpu = torch.device(&quot;cpu&quot;)
+a = torch.ones(10)
+b = torch.ones(10)
+tube = Tube(cpu) \
+    .register_input_tensor((10,), torch.float32, &quot;arr_a&quot;, False) \
+    .register_input_tensor((10,), torch.float32, &quot;arr_b&quot;, False) \
+    .register_output_tensor((10,), torch.float32, &quot;output_arr&quot;, False) \
+    .register_kernel(ti_add, [&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]) \
+    .finish()
+out = tube(a, b)
+</code></pre>
+<p>Acceptable dimensions of tensors to be registered are:</p>
+<ul>
+<li><code>None</code>: means the flexible batch dimension, must be the first dimension e.g. <code>(None, 2, 3, 4)</code></li>
+<li>Positive integers: fixed dimensions with the indicated dimensionality</li>
+<li>Negative integers:
+<ul>
+<li><code>-1</code>: means any number <code>[1, +inf)</code>, only usable in the registration of input tensors.</li>
+<li>Negative integers &lt; -1: indices of some dimensions that must be of the same dimensionality
+<ul>
+<li>Restriction: negative indices must be &quot;declared&quot; in the registration of input tensors first, then used in the registration of intermediate and output tensors. </li>
+<li>Example 1: tensor <code>a</code> and <code>b</code> of shapes <code>a: (2, -2, 3)</code> and <code>b: (-2, 5, 6)</code> mean the dimensions of <code>-2</code> must match.</li>
+<li>Example 2: tensor <code>a</code> and <code>b</code> of shapes <code>a: (-1, 2, 3)</code> and <code>b: (-1, 5, 6)</code> mean no restrictions on the first dimensions.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="automatic-batching"><a class="header" href="#automatic-batching">Automatic Batching</a></h2>
+<p>Automatic batching is done simply by running kernels <code>batch</code> times. The batch number is determined by the leading dimension of tensors of registered shape <code>(None, ...)</code>.</p>
+<p>It's required that if any input tensors are batched (which means they have registered the first dimension to be <code>None</code>), all intermediate fields and output tensors must be registered as batched.</p>
+<h2 id="more-examples"><a class="header" href="#more-examples">More Examples</a></h2>
+<p>Simple one without negative indices or batch dimension:</p>
+<pre><code class="language-python">@ti.kernel
+def ti_add(arr_a: ti.template(), arr_b: ti.template(), output_arr: ti.template()):
+    for i in arr_a:
+        output_arr[i] = arr_a[i] + arr_b[i]
+
+ti.init(ti.cpu)
+cpu = torch.device(&quot;cpu&quot;)
+a = torch.ones(10)
+b = torch.ones(10)
+tube = Tube(cpu) \
+    .register_input_tensor((10,), torch.float32, &quot;arr_a&quot;, False) \
+    .register_input_tensor((10,), torch.float32, &quot;arr_b&quot;, False) \
+    .register_output_tensor((10,), torch.float32, &quot;output_arr&quot;, False) \
+    .register_kernel(ti_add, [&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]) \
+    .finish()
+out = tube(a, b)
+</code></pre>
+<p>With negative dimension index:</p>
+<pre><code class="language-python">ti.init(ti.cpu)
+cpu = torch.device(&quot;cpu&quot;)
+tube = Tube(cpu) \
+    .register_input_tensor((-2,), torch.float32, &quot;arr_a&quot;, False) \
+    .register_input_tensor((-2,), torch.float32, &quot;arr_b&quot;, False) \
+    .register_output_tensor((-2,), torch.float32, &quot;output_arr&quot;, False) \
+    .register_kernel(ti_add, [&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]) \
+    .finish()
+dim = 10
+a = torch.ones(dim)
+b = torch.ones(dim)
+out = tube(a, b)
+assert torch.allclose(out, torch.full((dim,), 2.))
+dim = 100
+a = torch.ones(dim)
+b = torch.ones(dim)
+out = tube(a, b)
+assert torch.allclose(out, torch.full((dim,), 2.))
+</code></pre>
+<p>With batch dimension:</p>
+<pre><code class="language-python">@ti.kernel
+def int_add(a: ti.template(), b: ti.template(), out: ti.template()):
+    out[None] = a[None] + b[None]
+
+ti.init(ti.cpu)
+b = torch.tensor(1., requires_grad=True)
+batched_a = torch.ones(10, requires_grad=True)
+tube = Tube() \
+    .register_input_tensor((None,), torch.float32, &quot;a&quot;) \
+    .register_input_tensor((), torch.float32, &quot;b&quot;) \
+    .register_output_tensor((None,), torch.float32, &quot;out&quot;, True) \
+    .register_kernel(int_add, [&quot;a&quot;, &quot;b&quot;, &quot;out&quot;]) \
+    .finish()
+out = tube(batched_a, b)
+loss = out.sum()
+loss.backward()
+assert torch.allclose(torch.ones_like(batched_a) + 1, out)
+assert b.grad == 10.
+assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
+</code></pre>
+<p>For more valid and invalid use examples, please see <a href="../../tests/test_tube">test files</a> in the test folder.</p>
+<h2 id="apis-1"><a class="header" href="#apis-1">APIs</a></h2>
+<h3 id="constructor"><a class="header" href="#constructor">Constructor</a></h3>
+<pre><code class="language-python">def __init__(self,
+             device: Optional[torch.device] = None,
+             persistent_field: bool = True,
+             enable_backward: bool = True):
+    &quot;&quot;&quot;
+        Init a tube
+
+        @param device: Optional, torch.device tensors are on, if it's None, the device is determined by input tensors
+        @param persistent_field: whether or not to save fields during forward pass.
+        If True, created fields will not be destroyed until compute graph is cleaned,
+        otherwise they will be destroyed right after forward pass is done and re-created in backward pass.
+        Having two modes is due to Taichi's performance issue, see https://github.com/taichi-dev/taichi/pull/4356
+        @param enable_backward: whether or not to enable backward gradient computation, disable it will have performance
+        improvement in forward pass, but attempting to do backward computation will cause runtime error.
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="registrations-1"><a class="header" href="#registrations-1">Registrations</a></h3>
+<p>Register input tensor shapes:</p>
+<pre><code class="language-python">def register_input_tensor(self,
+                          dims: Iterable[Union[int, None]],
+                          dtype: torch.dtype,
+                          name: str,
+                          requires_grad: Optional[bool] = None,
+                          field_manager: Optional[FieldManager] = None):
+    &quot;&quot;&quot;
+        Register an input tensor
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param requires_grad: optional, if it's None, it will be determined by input tensor
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        &quot;&quot;&quot;
+</code></pre>
+<p>Register intermediate field shapes:</p>
+<pre><code class="language-python">def register_intermediate_field(self,
+                                dims: Iterable[Union[int, None]],
+                                ti_dtype: TiDataType,
+                                name: str,
+                                needs_grad: bool,
+                                field_manager: Optional[FieldManager] = None):
+    &quot;&quot;&quot;
+        Register an intermediate field,
+        which can be useful if multiple kernels are used and intermediate results between kernels are stored
+
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param ti_dtype: taichi data type
+        @param name: name of the field
+        @param needs_grad: if the field needs gradients.
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        &quot;&quot;&quot;
+</code></pre>
+<p>Register output tensor shapes:</p>
+<pre><code class="language-python">def register_output_tensor(self,
+                           dims: Iterable[Union[int, None]],
+                           dtype: torch.dtype,
+                           name: str,
+                           requires_grad: bool,
+                           field_manager: Optional[FieldManager] = None):
+    &quot;&quot;&quot;
+        Register an output tensor
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param requires_grad: if the output requires gradients
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        &quot;&quot;&quot;
+</code></pre>
+<p>Register kernels:</p>
+<pre><code class="language-python">def register_kernel(self, kernel: Callable, tensor_names: List[str], *extra_args: Any, name: Optional[str] = None):
+    &quot;&quot;&quot;
+        Register a Taichi kernel
+
+        @param kernel: Taichi kernel. For requirements, see README
+        @param tensor_names: the names of registered tensors that are to be used in this kernel
+        @param extra_args: any extra arguments passed to the kernel
+        @param name: name of this kernel, if it's None, it will be kernel.__name__
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="set-kernel-extra-arguments"><a class="header" href="#set-kernel-extra-arguments">Set Kernel Extra Arguments</a></h3>
+<p>Kernels may need extra arguments that do not need gradients, then you can set extra arguments with <code>Tube.set_kernel_extra_args()</code> or set extra arguments in <code>Tube.register_kernel()</code></p>
+<pre><code class="language-python">def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
+    &quot;&quot;&quot;
+        Set args for a kernel
+        @param kernel: kernel function or its name
+        @param extra_args: extra kernel arguments
+        &quot;&quot;&quot;
+</code></pre>
+<p>One example kernel is shown below, in which <code>multiplier</code> is an extra kernel argument.</p>
+<pre><code class="language-python">@ti.kernel
+def mul(arr: ti.template(), out: ti.template(), multiplier: float):
+    for i in arr:
+        out[i] = arr[i] * multiplier
+</code></pre>
+<h2 id="advanced-field-construction"><a class="header" href="#advanced-field-construction">Advanced Field Construction</a></h2>
+<p>With <code>FieldManager</code>, you can tweak how fields are constructed in order to gain performance improvement in kernel calculations.</p>
+<p>By supplying a customized <code>FieldManager</code> when registering a field, you can construct a field however you want.</p>
+<p><strong>WARNING:</strong></p>
+<ul>
+<li>If you don't know why constructing fields differently can improve performance, don't use this feature.</li>
+<li>If you don't know how to construct fields differently, please refer to <a href="https://docs.taichi.graphics/lang/articles/advanced/layout">Taichi field documentation</a>.</li>
+</ul>
+<h3 id="example"><a class="header" href="#example">Example</a></h3>
+<p>In <a href="../../src/stannum/auxiliary.py"><code>auxiliary.py</code></a>, <code>FieldManager</code> is defined as an abstract class as</p>
+<pre><code class="language-python">class FieldManager(ABC):
+    &quot;&quot;&quot;
+    FieldManagers enable potential flexible field constructions and manipulations.
+
+    For example, instead of ordinarily layout-ting a multidimensional field,
+    you can do hierarchical placements for fields, which may gives dramatic performance improvements
+    based on applications. Since hierarchical fields may not have the same shape of input tensor,
+    it's YOUR responsibility to write a FieldManager that can correctly transform field values into/from tensors
+    &quot;&quot;&quot;
+
+    @abstractmethod
+    def construct_field(self,
+                        fields_builder: ti.FieldsBuilder,
+                        concrete_tensor_shape: Tuple[int, ...],
+                        needs_grad: bool) -&gt; Union[ScalarField, MatrixField]:
+        pass
+
+    @abstractmethod
+    def to_tensor(self, field: Union[ScalarField, MatrixField]) -&gt; torch.Tensor:
+        pass
+
+    @abstractmethod
+    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -&gt; torch.Tensor:
+        pass
+
+    @abstractmethod
+    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        pass
+
+    @abstractmethod
+    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        pass
+</code></pre>
+<p>One example is the <code>DefaultFieldManger</code> in <a href="../../src/stannum/tube.py"><code>tube.py</code></a> defined as:</p>
+<pre><code class="language-python">class DefaultFieldManager(FieldManager):
+    &quot;&quot;&quot;
+    Default field manager which layouts data in tensors by constructing fields
+    with the ordinary multidimensional array layout
+    &quot;&quot;&quot;
+
+    def __init__(self,
+                 dtype: TiDataType,
+                 complex_dtype: bool,
+                 device: torch.device):
+        self.dtype: TiDataType = dtype
+        self.complex_dtype: bool = complex_dtype
+        self.device: torch.device = device
+
+    def construct_field(self,
+                        fields_builder: ti.FieldsBuilder,
+                        concrete_tensor_shape: Tuple[int, ...],
+                        needs_grad: bool) -&gt; Union[ScalarField, MatrixField]:
+        assert not fields_builder.finalized
+        if self.complex_dtype:
+            field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
+        else:
+            field = ti.field(self.dtype, needs_grad=needs_grad)
+
+        if needs_grad:
+            fields_builder \
+                .dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape) \
+                .place(field, field.grad)
+        else:
+            fields_builder.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
+        return field
+
+    def to_tensor(self, field: Union[ScalarField, MatrixField]) -&gt; torch.Tensor:
+        tensor = field.to_torch(device=self.device)
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -&gt; torch.Tensor:
+        tensor = grad_field.to_torch(device=self.device)
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        field.from_torch(tensor)
+
+    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        grad_field.from_torch(tensor)
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="complex-number-support"><a class="header" href="#complex-number-support">Complex Number Support</a></h1>
+<p>When registering input fields and output fields, you can pass <code>complex_dtype=True</code> to enable simple complex tensor input and output support. For instance, <code>Tin(..).register_input_field(input_field, complex_dtype=True)</code>.</p>
+<p>Now the complex tensor support is limited in that the representation of complex numbers is a barebone 2D vector, since Taichi has no official support on complex numbers yet.</p>
+<p>This means although <code>stannum</code> provides some facilities to deal with complex tensor input and output, you have to define and do the operations on the proxy 2D vectors yourself.</p>
+<p>In practice, we now have these limitations:</p>
+<ul>
+<li>
+<p>The registered field with <code>complex_dtype=True</code> must be an appropriate <code>VectorField</code> or <code>ScalarField</code></p>
+<ul>
+<li>If it's <code>VectorField</code>, <code>n</code> should be <code>2</code>, like <code>v_field = ti.Vector.field(n=2, dtype=ti.f32, shape=(2, 3, 4, 5))</code></li>
+<li>If it's a <code>ScalarField</code>, the last dimension of it should be <code>2</code>,
+like <code>field = ti.field(ti.f32, shape=(2,3,4,5,2))</code></li>
+<li>The above examples accept tensors of <code>dtype=torch.cfloat, shape=(2,3,4,5)</code></li>
+</ul>
+</li>
+<li>
+<p>The semantic of complex numbers is not preserved in kernels, so you are manipulating regular fields, and as a consequence, you need to implement complex number operators yourself</p>
+<pre><code>* Example:
+</code></pre>
+<pre><code class="language-python">@ti.kernel
+def element_wise_complex_mul(self):
+  for i in self.complex_array0:
+      # this is not complex number multiplication, but only a 2D vector element-wise multiplication
+      self.complex_output_array[i] = self.complex_array0[i] * self.complex_array1[i] 
+</code></pre>
+</li>
+</ul>
+<h2 id=""><a class="header" href="#"></a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="contribution"><a class="header" href="#contribution">Contribution</a></h1>
+<p><strong>PRs are always welcomed, please see TODOs and issues.</strong></p>
+<h2 id="todos"><a class="header" href="#todos">TODOs</a></h2>
+<h3 id="documentation"><a class="header" href="#documentation">Documentation</a></h3>
+<ul>
+<li>Improve documentation</li>
+</ul>
+<h3 id="features"><a class="header" href="#features">Features</a></h3>
+<ul>
+<li>PyTorch-related:
+<ul>
+<li>PyTorch checkpoint and save model</li>
+<li>Proxy <code>torch.nn.parameter.Parameter</code> for weight fields for optimizers</li>
+</ul>
+</li>
+<li>Taichi related:
+<ul>
+<li>Wait for Taichi to have native PyTorch tensor view to optimize performance(i.e., no need to copy data back and
+forth)</li>
+<li>Automatic Batching for <code>Tin</code> - waiting for upstream Taichi improvement
+<ul>
+<li>workaround for now: do static manual batching, that is to extend fields with one more dimension for batching</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script type="text/javascript">
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script type="text/javascript">
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script type="text/javascript">
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </body>
+</html>
