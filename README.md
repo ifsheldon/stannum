@@ -1,4 +1,8 @@
-<img src="logo.PNG" alt="IMG_2154" style="zoom: 33%;" />
+
+<div align="center">
+  <img width="500px" src="logo.png"/>
+</div>
+
 
 # Stannum
 
