@@ -1,4 +1,4 @@
-![IMG_2154](logo.PNG)
+<img src="logo.PNG" alt="IMG_2154" style="zoom: 33%;" />
 
 # Stannum
 
