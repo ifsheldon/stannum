@@ -7,3 +7,6 @@ title = "Stannum"
 
 [output.html]
 cname = "fengliang.io"
+
+[build]
+build-dir = "../docs"
