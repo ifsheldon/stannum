@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img width="500px" src="logo.png"/>
+  <img width="500px" src="https://github.com/ifsheldon/stannum/raw/main/logo.PNG"/>
 </div>
 
 
