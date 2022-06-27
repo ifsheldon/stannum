@@ -64,7 +64,15 @@ def check_field_needs_grad(field: Union[MatrixField, ScalarField], needs_grad: U
                 f"You are using legacy Taichi (v{__ti_version[0]}.{__ti_version[1]}.{__ti_version[2]} < v0.7.26), "
                 f"you need to specify needs_grad yourself when registering a field")
         else:
-            return field.snode.ptr.has_grad()
+            snode_ptr = field.snode.ptr
+            if hasattr(snode_ptr, "has_grad"):
+                return snode_ptr.has_grad()
+            elif hasattr(snode_ptr, "has_adjoint"):
+                return snode_ptr.has_adjoint()
+            else:
+                raise Exception("Oops! Seems Taichi APIs changed again, "
+                                "check [Upstream breaking change tracker](github.com/ifsheldon/stannum/issues/11). "
+                                "Or, file an issue please.")
     return needs_grad
 
 
