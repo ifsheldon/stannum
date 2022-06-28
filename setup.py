@@ -8,7 +8,7 @@ setuptools.setup(
     version="0.6.3",
     author="Feng Liang",
     author_email="feng.liang@kaust.edu.sa",
-    description="PyTorch wrapper for Taichi data-oriented class",
+    description="Fusing Taichi into PyTorch",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ifsheldon/stannum",
