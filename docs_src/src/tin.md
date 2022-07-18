@@ -43,8 +43,8 @@ internal_field = ti.field(ti.f32)
 
 
 @ti.kernel
-def some_kernel():
-    output_field[None] = input_field[None] + internal_field[None]
+def some_kernel(bias: float):
+    output_field[None] = input_field[None] + internal_field[None] + bias
 
 
 device = torch.device("cpu")
