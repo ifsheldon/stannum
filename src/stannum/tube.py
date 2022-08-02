@@ -9,7 +9,7 @@ from taichi.lang.matrix import MatrixField
 from functools import partial
 
 from .utils import is_kernel, autofill_kernel_name_available
-from .auxiliary import FieldManager, SNode
+from .auxiliary import FieldManager, SNode, DimensionCalculator
 
 
 class DefaultFieldManager(FieldManager):
@@ -119,29 +119,36 @@ class Seal:
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
                  *dims: int,
+                 shape_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                  field_manager: Optional[FieldManager] = None,
                  requires_grad: Optional[bool] = None,
                  name: Optional[str] = None):
         assert dtype is not None, "dtype must not be None"
-        # validate dims
-        if len(dims) > 0:  # not scalar
-            if dims[0] is None:
-                for i in range(1, len(dims)):
-                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
-            else:
-                for i in range(len(dims)):
-                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+        if shape_calc is None:
+            # validate dims
+            if len(dims) > 0:  # if it is not a scalar, further check
+                if dims[0] is None:
+                    for i in range(1, len(dims)):
+                        assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+                else:
+                    for i in range(len(dims)):
+                        assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
 
-        for i in dims:
-            assert i != 0, f"Dimension cannot be 0, got {dims}"
+            for i in dims:
+                assert i != 0, f"Dimension cannot be 0, got {dims}"
+
+            self.dims: Optional[Tuple[int, ...]] = dims
+            self.dims_calc: Optional[Union[Callable, DimensionCalculator]] = None
+        else:
+            self.dims: Optional[Tuple[int, ...]] = None
+            self.dims_calc: Union[Callable, DimensionCalculator] = shape_calc
 
         self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
         if self.complex_dtype:
             dtype = ti.f32 if dtype == torch.cfloat else ti.f64
         self.dtype: TiDataType = to_taichi_type(dtype) if dtype is not None else dtype
         self.field_manager: FieldManager = field_manager
-        self.dims: Tuple[int, ...] = dims
-        self.batched: bool = len(dims) > 0 and dims[0] is None
+        self.batched: Optional[bool] = None
         self.name: str = name
         self.requires_grad: bool = requires_grad
 
@@ -154,6 +161,18 @@ class Seal:
                              self.complex_dtype,
                              needs_grad if self.requires_grad is None else self.requires_grad,
                              device, self.name)
+
+    def calc_dimensions(self,
+                        input_tensor_dimensions: Dict[str, Tuple[int, ...]],
+                        input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
+        assert self.dims_calc is not None
+        if isinstance(self.dims_calc, DimensionCalculator):
+            dimensions = self.dims_calc.calc_dimension(self.name, input_tensor_dimensions, input_tensor_shapes)
+        else:
+            dimensions = self.dims_calc(self.name, input_tensor_dimensions, input_tensor_shapes)
+
+        self.batched = len(dimensions) > 0 and dimensions[0] is None
+        return dimensions
 
 
 class TubeKernelBundle:
@@ -243,61 +262,74 @@ class Tube(torch.nn.Module):
                     field_manager=field_manager,
                     requires_grad=requires_grad,
                     name=name)
-        if seal.batched:
-            self.batched = True
+        seal.batched = len(dims) > 0 and dims[0] is None
+        self.batched = self.batched or seal.batched
         self.input_placeholders.append(seal)
         self.seals[name] = seal
         return self
 
     def register_output_tensor(self,
-                               dims: Iterable[Union[int, None]],
                                dtype: torch.dtype,
                                name: str,
                                requires_grad: bool,
+                               dims: Optional[Iterable[Union[int, None]]] = None,
+                               dim_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                                field_manager: Optional[FieldManager] = None):
         """
         Register an output tensor
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
         @param dtype: torch data type
         @param name: name of the tensor and corresponding field
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
         @param requires_grad: if the output requires gradients
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         """
+        # TODO: update doc about dims
         assert not self._finished, "Try to register output tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
-        assert not any(map(lambda d: d == -1, dims)), \
-            "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
-        seal = Seal(dtype, *dims,
-                    field_manager=field_manager,
-                    requires_grad=requires_grad,
-                    name=name)
-        if self.batched:
-            assert seal.batched, \
-                "Already registered batched inputs, so outputs should also be batched, which means dims[0] must be None"
+        if dims is not None:
+            assert not any(map(lambda d: d == -1, dims)), \
+                "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
+            seal = Seal(dtype, *dims,
+                        field_manager=field_manager,
+                        requires_grad=requires_grad,
+                        name=name)
+            seal.batched = len(dims) > 0 and dims[0] is None
+        elif dim_calc is not None:
+            seal = Seal(dtype, None,
+                        shape_calc=dim_calc,
+                        field_manager=field_manager,
+                        requires_grad=requires_grad,
+                        name=name)
+        else:
+            raise Exception("You need to specify either dims or shape_calc to tell Tube the shape of output tensors")
+
         self.output_placeholders.append(seal)
         self.seals[name] = seal
         return self
 
     def register_intermediate_field(self,
-                                    dims: Iterable[Union[int, None]],
                                     ti_dtype: TiDataType,
                                     name: str,
                                     needs_grad: bool,
+                                    dims: Optional[Iterable[Union[int, None]]] = None,
+                                    dim_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                                     field_manager: Optional[FieldManager] = None):
         """
         Register an intermediate field,
         which can be useful if multiple kernels are used and intermediate results between kernels are stored
 
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
         @param ti_dtype: taichi data type
         @param name: name of the field
         @param needs_grad: if the field needs gradients.
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         """
         assert not self._finished, "Try to register intermediate field after .finish()"
@@ -306,18 +338,23 @@ class Tube(torch.nn.Module):
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
-        assert not any(map(lambda d: d == -1, dims)), \
-            "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
-        seal = Seal(ti_dtype, *dims,
-                    field_manager=field_manager,
-                    requires_grad=needs_grad,
-                    name=name)
-        if self.batched:
-            assert seal.batched, \
-                "Already registered batched inputs, so intermediate field should also be batched, " \
-                "which means dims[0] must be None"
-        if seal.batched:
-            self.batched = True
+        if dims is not None:
+            assert not any(map(lambda d: d == -1, dims)), \
+                "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
+            seal = Seal(ti_dtype, *dims,
+                        field_manager=field_manager,
+                        requires_grad=needs_grad,
+                        name=name)
+            seal.batched = len(dims) > 0 and dims[0] is None
+        elif dim_calc is not None:
+            seal = Seal(ti_dtype, None,
+                        shape_calc=dim_calc,
+                        field_manager=field_manager,
+                        requires_grad=needs_grad,
+                        name=name)
+        else:
+            raise Exception(
+                "You need to specify either dims or shape_calc to tell Tube the shape of intermediate fields")
         self.intermediate_field_placeholders.append(seal)
         self.seals[name] = seal
         return self
@@ -369,11 +406,6 @@ class Tube(torch.nn.Module):
         assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
         assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
         assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
-        if self.batched:
-            for output_seal in self.output_placeholders:
-                assert output_seal.batched, \
-                    "Already registered batched inputs, so outputs should also be batched, " \
-                    "which means dims[0] must be None"
         # neg dim check
         neg_dims = {-1}
         for ip in self.input_placeholders:
@@ -425,7 +457,7 @@ def select_concrete_field(seals: List[Seal],
     return selected_concrete_fields
 
 
-def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
+def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
                                 input_placeholders: List[Seal],
                                 intermediate_fields: List[Seal],
                                 output_placeholders: List[Seal]) \
@@ -437,7 +469,7 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
 
     # check dimensionality and batch nums
     batch_num = None
-    for i, (tensor_shape, input_dim) in enumerate(zip(tensor_shapes, input_dims)):
+    for i, (tensor_shape, input_dim) in enumerate(zip(input_tensor_shapes, input_dims)):
         assert len(tensor_shape) == len(input_dim), \
             f"Dimensionality check failed, expecting the {i}th tensor to be {len(input_dim)}D, got {len(tensor_shape)}D"
         if len(input_dim) == 0:  # scalar, shape = ()
@@ -460,17 +492,38 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
             if d is None:
                 concrete_input_dims[idx][i] = batch_num
             elif d == -1:
-                concrete_input_dims[idx][i] = tensor_shapes[idx][i]
+                concrete_input_dims[idx][i] = input_tensor_shapes[idx][i]
             elif d < -1:
-                concrete_dim = tensor_shapes[idx][i]
+                concrete_dim = input_tensor_shapes[idx][i]
                 if d in neg_dims:
                     assert neg_dims[d] == concrete_dim, f"Dim = {d} not match"
                 else:
                     neg_dims[d] = concrete_dim
                 concrete_input_dims[idx][i] = concrete_dim
 
-    output_dims = list(map(lambda x: x.dims, output_placeholders))
-    intermediate_dims = list(map(lambda x: x.dims, intermediate_fields))
+    input_tensor_dimensions_dict = {}
+    input_tensor_shapes_dict = {}
+    for input_placeholder, input_tensor_shape in zip(input_placeholders, input_tensor_shapes):
+        name = input_placeholder.name
+        input_tensor_dimensions_dict[name] = input_placeholder.dims
+        input_tensor_shapes_dict[name] = input_tensor_shape
+
+    get_dims = lambda x: x.dims if x.dims is not None \
+        else x.calc_dimensions(input_tensor_dimensions_dict, input_tensor_shapes_dict)
+
+    output_dims = list(map(get_dims, output_placeholders))
+    intermediate_dims = list(map(get_dims, intermediate_fields))
+    # batching check
+    if batch_num is not None:  # batching
+        for seal in output_placeholders + intermediate_fields:
+            assert seal.batched, \
+                "The dimension 0 of registered output tensors or intermediate fields is not batched (not None) " \
+                "but the input is batched. " \
+                "If the input is batched (auto-batching is on), " \
+                "the registered or calculated dimensions of registered output tensors or intermediate fields MUST be None" \
+                "\nName of error intermediate field or output tensor is {}".format(seal.name)
+
+    # calculate output and intermediate dims
     concrete_output_dims = list(map(list, output_dims))
     concrete_intermediate_dims = list(map(list, intermediate_dims))
     for idx, output_dim in enumerate(output_dims):
