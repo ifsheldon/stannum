@@ -5,7 +5,11 @@ from taichi import __version__ as __ti_version
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
-from taichi._lib.core.taichi_python import DataType as TiDataType
+
+if __ti_version >= (1, 1, 0):
+    from taichi._lib.core.taichi_python import DataType as TiDataType
+else:
+    from taichi._lib.core.taichi_core import DataType as TiDataType
 import torch
 import taichi as ti
 
