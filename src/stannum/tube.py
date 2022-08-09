@@ -3,7 +3,7 @@ import torch
 from taichi.lang.impl import axes
 from typing import Optional, Callable, Union, Tuple, List, Iterable, Dict, Any
 from .utils import to_taichi_type, need_auto_clearing_fields
-from taichi._lib.core.taichi_core import DataType as TiDataType
+from taichi._lib.core.taichi_python import DataType as TiDataType
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
 from functools import partial
