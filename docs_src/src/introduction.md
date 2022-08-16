@@ -29,6 +29,21 @@ Make sure you have the following installed:
 
 Stannum does **NOT** check the differentiability of your kernels, so you may not get correct gradients if your kernel is not differentiable. Please refer to [Differentiable Programming of Taichi](https://docs.taichi-lang.org/docs/differentiable_programming) for more information.
 
+## `Tin` or `Tube`?
+
+`stannum` mainly has two high-level APIs, `Tin` and `Tube`. `Tin` aims to be the thinnest bridge layer with the least overhead while `Tube` has more functionalities and convenience with some more overhead.
+
+See the comparison below:
+
+|                                 |         `Tin`/`EmptyTin`         |                            `Tube`                            |
+| :-----------------------------: | :------------------------------: | :----------------------------------------------------------: |
+|            Overhead             |               Low❤️               | Too many invocations in one forward pass will incur perf loss (see [issue #9](https://github.com/ifsheldon/stannum/issues/9))⚠️ |
+|        Field Management         | Users must manage Taichi fields⚠️ |                       Auto management♻️                       |
+|      Forward Pass Bridging      |                ✅                 |                              ✅                               |
+| Backward Pass Gradient Bridging |                ✅                 |                              ✅                               |
+|            Batching             |                ❌                 |                              ✅                               |
+|     Variable Tensor Shapes      |                ❌                 |                              ✅                               |
+
 ## Bugs & Issues
 
 Please feel free to file issues on [Github](https://github.com/ifsheldon/stannum). If a runtime error occurs from the dependencies of `stannum`, you may also want to check the [upstream breaking change tracker](https://github.com/ifsheldon/stannum/issues/11).

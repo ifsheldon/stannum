@@ -165,6 +165,17 @@
 </ul>
 <h2 id="differentiability"><a class="header" href="#differentiability">Differentiability</a></h2>
 <p>Stannum does <strong>NOT</strong> check the differentiability of your kernels, so you may not get correct gradients if your kernel is not differentiable. Please refer to <a href="https://docs.taichi-lang.org/docs/differentiable_programming">Differentiable Programming of Taichi</a> for more information.</p>
+<h2 id="tin-or-tube"><a class="header" href="#tin-or-tube"><code>Tin</code> or <code>Tube</code>?</a></h2>
+<p><code>stannum</code> mainly has two high-level APIs, <code>Tin</code> and <code>Tube</code>. <code>Tin</code> aims to be the thinnest bridge layer with the least overhead while <code>Tube</code> has more functionalities and convenience with some more overhead.</p>
+<p>See the comparison below:</p>
+<table><thead><tr><th style="text-align: center"></th><th style="text-align: center"><code>Tin</code>/<code>EmptyTin</code></th><th style="text-align: center"><code>Tube</code></th></tr></thead><tbody>
+<tr><td style="text-align: center">Overhead</td><td style="text-align: center">Low❤️</td><td style="text-align: center">Too many invocations in one forward pass will incur perf loss (see <a href="https://github.com/ifsheldon/stannum/issues/9">issue #9</a>)⚠️</td></tr>
+<tr><td style="text-align: center">Field Management</td><td style="text-align: center">Users must manage Taichi fields⚠️</td><td style="text-align: center">Auto management♻️</td></tr>
+<tr><td style="text-align: center">Forward Pass Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Backward Pass Gradient Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Batching</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Variable Tensor Shapes</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
+</tbody></table>
 <h2 id="bugs--issues"><a class="header" href="#bugs--issues">Bugs &amp; Issues</a></h2>
 <p>Please feel free to file issues on <a href="https://github.com/ifsheldon/stannum">Github</a>. If a runtime error occurs from the dependencies of <code>stannum</code>, you may also want to check the <a href="https://github.com/ifsheldon/stannum/issues/11">upstream breaking change tracker</a>.</p>
 
