@@ -1,8 +1,9 @@
 import torch
-from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, eprint, need_auto_clearing_fields
+from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, need_auto_clearing_fields
 from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
+from warnings import warn
 
 
 class TaichiKernelBundle:
@@ -172,10 +173,9 @@ class TinFunc(torch.autograd.Function):
                 gradient_tensors.append(None)
 
         if any(map(lambda x: x.needs_grad, tin_configs.internal_fields)):
-            eprint("WARNING:\n"
-                   "Some internal fields require gradients.\n"
-                   "Although they got gradients during back propagation in the grad field,\n"
-                   "values of them will NOT be updated automatically")
+            warn("\nSome internal fields require gradients.\n"
+                 "Although they got gradients during back propagation in the grad field,\n"
+                 "values of them will NOT be updated automatically")
         return tuple(gradient_tensors)
 
 
@@ -261,12 +261,12 @@ class EmptyTin(torch.nn.Module):
             field.from_torch(value)
         else:
             if self.auto_clear:
-                eprint("WARNING:\n"
-                       "You have set auto_clear=True (due to your setting or using legacy Taichi < 0.9.1),\n"
-                       "but the library will not clean internal field for you.\n"
-                       "A field may contain garbage if it's allocated by ti.FieldsBuilder "
-                       "and thus lead to undefined calculation outcomes.\n"
-                       "So you may need to do internal_field.fill(0) yourself.")
+                warn("\nYou have set auto_clear=True (due to your setting or using legacy Taichi < 0.9.1),\n"
+                     "but the library will not clean internal field for you.\n"
+                     "A field may contain garbage if it's allocated by ti.FieldsBuilder "
+                     "and thus lead to undefined calculation outcomes.\n"
+                     "So you may need to do internal_field.fill(0) yourself.",
+                     stacklevel=2)
         self.internal_fields[field_name] = TaichiField(field, needs_grad, field_name, complex_dtype)
         return self
 
