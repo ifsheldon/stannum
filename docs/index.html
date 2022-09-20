@@ -158,8 +158,7 @@
 <li>PyTorch</li>
 <li><strong>latest</strong> Taichi
 <ul>
-<li>For performance concerns, we strongly recommend to use Taichi&gt;=0.9.1</li>
-<li>If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.</li>
+<li>For performance concerns, we strongly recommend to use Taichi &gt;= 1.1.3 (see Issue #9 for more information)</li>
 </ul>
 </li>
 </ul>
@@ -169,14 +168,19 @@
 <p><code>stannum</code> mainly has two high-level APIs, <code>Tin</code> and <code>Tube</code>. <code>Tin</code> aims to be the thinnest bridge layer with the least overhead while <code>Tube</code> has more functionalities and convenience with some more overhead.</p>
 <p>See the comparison below:</p>
 <table><thead><tr><th style="text-align: center"></th><th style="text-align: center"><code>Tin</code>/<code>EmptyTin</code></th><th style="text-align: center"><code>Tube</code></th></tr></thead><tbody>
-<tr><td style="text-align: center">Overhead*</td><td style="text-align: center">Low❤️</td><td style="text-align: center">Too many invocations in one forward pass will incur perf loss (see <a href="https://github.com/ifsheldon/stannum/issues/9">issue #9</a>)⚠️</td></tr>
+<tr><td style="text-align: center">Overhead<sup class="footnote-reference"><a href="#1">1</a></sup> <sup class="footnote-reference"><a href="#2">2</a></sup></td><td style="text-align: center">Low❤️</td><td style="text-align: center">A bit more overhead due to auto memory management</td></tr>
 <tr><td style="text-align: center">Field Management</td><td style="text-align: center">Users must manage Taichi fields⚠️</td><td style="text-align: center">Auto management♻️</td></tr>
 <tr><td style="text-align: center">Forward Pass Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
 <tr><td style="text-align: center">Backward Pass Gradient Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
 <tr><td style="text-align: center">Batching</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
 <tr><td style="text-align: center">Variable Tensor Shapes</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
 </tbody></table>
-<p>* Performance Tip: A lot of assertions in <code>stannum</code> make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass <code>-O</code> to Python as suggested in <a href="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement">the Python doc about assertions</a>.</p>
+<div class="footnote-definition" id="1"><sup class="footnote-definition-label">1</sup>
+<p>(Performance Tip) A lot of assertions in <code>stannum</code> make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass <code>-O</code> to Python as suggested in <a href="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement">the Python doc about assertions</a>.</p>
+</div>
+<div class="footnote-definition" id="2"><sup class="footnote-definition-label">2</sup>
+<p>See Issue #9 for more information about the performance if you want to use <code>Tube</code> with legacy Taichi &lt; <code>1.1.3</code>.</p>
+</div>
 <h2 id="bugs--issues"><a class="header" href="#bugs--issues">Bugs &amp; Issues</a></h2>
 <p>Please feel free to file issues on <a href="https://github.com/ifsheldon/stannum">Github</a>. If a runtime error occurs from the dependencies of <code>stannum</code>, you may also want to check the <a href="https://github.com/ifsheldon/stannum/issues/11">upstream breaking change tracker</a>.</p>
 
