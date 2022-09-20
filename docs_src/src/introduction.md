@@ -22,8 +22,7 @@ Make sure you have the following installed:
 
 * PyTorch
 * **latest** Taichi
-    * For performance concerns, we strongly recommend to use Taichi>=0.9.1
-    * If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.
+    * For performance concerns, we strongly recommend to use Taichi >= 1.1.3 (see Issue #9 for more information)
 
 ## Differentiability
 
@@ -35,16 +34,18 @@ Stannum does **NOT** check the differentiability of your kernels, so you may not
 
 See the comparison below:
 
-|                                 |         `Tin`/`EmptyTin`         |                            `Tube`                            |
-| :-----------------------------: | :------------------------------: | :----------------------------------------------------------: |
-|           Overhead\*            |               Low❤️               | Too many invocations in one forward pass will incur perf loss (see [issue #9](https://github.com/ifsheldon/stannum/issues/9))⚠️ |
-|        Field Management         | Users must manage Taichi fields⚠️ |                       Auto management♻️                       |
-|      Forward Pass Bridging      |                ✅                 |                              ✅                               |
-| Backward Pass Gradient Bridging |                ✅                 |                              ✅                               |
-|            Batching             |                ❌                 |                              ✅                               |
-|     Variable Tensor Shapes      |                ❌                 |                              ✅                               |
+|                                 |         `Tin`/`EmptyTin`         |                      `Tube`                       |
+| :-----------------------------: | :------------------------------: | :-----------------------------------------------: |
+|          Overhead[^1] [^2]           |               Low❤️               | A bit more overhead due to auto memory management |
+|        Field Management         | Users must manage Taichi fields⚠️ |                 Auto management♻️                  |
+|      Forward Pass Bridging      |                ✅                 |                         ✅                         |
+| Backward Pass Gradient Bridging |                ✅                 |                         ✅                         |
+|            Batching             |                ❌                 |                         ✅                         |
+|     Variable Tensor Shapes      |                ❌                 |                         ✅                         |
 
-\* Performance Tip: A lot of assertions in `stannum` make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass `-O` to Python as suggested in [the Python doc about assertions](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement).
+[^1]: (Performance Tip) A lot of assertions in `stannum` make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass `-O` to Python as suggested in [the Python doc about assertions](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement).
+
+[^2]: See Issue #9 for more information about the performance if you want to use `Tube` with legacy Taichi < `1.1.3`.
 
 ## Bugs & Issues
 
