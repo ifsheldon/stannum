@@ -390,6 +390,15 @@ class Tube(torch.nn.Module):
     def forward(self, *input_tensors: torch.Tensor):
         return self.func.apply(self, *input_tensors)
 
+    from taichi import __version__ as ti_version
+    if ti_version < (1, 1, 3):
+        import warnings
+        warnings.warn(f"You are using Taichi = {ti_version[0]}.{ti_version[1]}.{ti_version[2]} "
+                      f"older than the recommended Taichi = 1.1.3. "
+                      f"Using Tube with old Taichi may suffer from performance downgrade. "
+                      f"See Stannum issue #9 for more information.",
+                      stacklevel=2)
+
 
 def concretize(device: torch.device,
                fields_builder: ti.FieldsBuilder,
