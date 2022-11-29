@@ -343,6 +343,9 @@ class EmptyTin(torch.nn.Module):
 
     @staticmethod
     def print_hint_for_packed_mode():
+        """
+        Print the hint only once to remind users of potential optimizations
+        """
         if not taichi.cfg.packed and not hasattr(EmptyTin.print_hint_for_packed_mode, "has_run"):
             eprint("Hint from Stannum: Not enabled packed mode of Taichi. "
                    "If you care about memory occupancy, enabling packed mode can help. "
