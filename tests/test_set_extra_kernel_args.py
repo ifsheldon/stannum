@@ -16,7 +16,7 @@ def test_set_extra_args_tin():
             out[i] = arr[i] * multiplier
 
     device = torch.device("cpu")
-    tin_layer = EmptyTin(device, auto_clear=True) \
+    tin_layer = EmptyTin(device, True) \
         .register_kernel(mull, 2.0) \
         .register_input_field(arr) \
         .register_output_field(out) \

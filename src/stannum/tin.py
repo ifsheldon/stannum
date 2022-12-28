@@ -9,15 +9,20 @@ from warnings import warn
 class EmptyTin(torch.nn.Module):
     """A Taichi field wrapper that requires no @ti.data_oriented class"""
 
-    def __init__(self, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+    def __init__(self,
+                 device: torch.device,
+                 auto_clear_grad: bool,
+                 _auto_clear: bool = need_auto_clearing_fields):
         """
         Init an EmptyTin instance
 
         @param device: torch.device instance
-        @param auto_clear: clear fields before use
+        @param auto_clear_grad: auto clear gradients in fields before backward computation
+        @param _auto_clear: clear fields before use, for legacy Taichi
         """
         super().__init__()
-        self.auto_clear = auto_clear
+        self.auto_clear_grad: bool = auto_clear_grad
+        self._auto_clear: bool = _auto_clear
         self.input_fields: List[TaichiField] = []
         self.internal_fields: Dict[str, TaichiField] = {}
         self.output_fields: List[TaichiField] = []
@@ -86,7 +91,7 @@ class EmptyTin(torch.nn.Module):
         if value is not None:
             field.from_torch(value)
         else:
-            if self.auto_clear:
+            if self._auto_clear:
                 warn("\nYou have set auto_clear=True (due to your setting or using legacy Taichi < 0.9.1),\n"
                      "but the library will not clean internal field for you.\n"
                      "A field may contain garbage if it's allocated by ti.FieldsBuilder "
@@ -156,7 +161,8 @@ class EmptyTin(torch.nn.Module):
                                       list(self.internal_fields.values()),
                                       self.output_fields,
                                       self.device,
-                                      self.auto_clear)
+                                      self.auto_clear_grad,
+                                      self._auto_clear)
         self.finished = True
         return self
 
@@ -168,14 +174,21 @@ class EmptyTin(torch.nn.Module):
 class Tin(EmptyTin):
     """A Taichi field wrapper that requires a @ti.data_oriented class for registering a kernel by name"""
 
-    def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+    def __init__(self,
+                 data_oriented: Any,
+                 device: torch.device,
+                 auto_clear_grad: bool,
+                 _auto_clear: bool = need_auto_clearing_fields):
         """
         Init a Tin instance
         @param data_oriented: @ti.data_oriented class instance
         @param device: torch.device instance
-        @param auto_clear: clear fields before use
+        @param auto_clear_grad: auto clear gradients in fields before backward computation
+        @param _auto_clear: clear fields before use
         """
-        super(Tin, self).__init__(device=device, auto_clear=auto_clear)
+        super(Tin, self).__init__(device=device,
+                                  auto_clear_grad=auto_clear_grad,
+                                  _auto_clear=_auto_clear)
         if not hasattr(data_oriented, "_data_oriented"):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
@@ -306,12 +319,14 @@ class TinConfigs:
                  weight_fields: List[TaichiField],
                  output_fields: List[TaichiField],
                  device: torch.device,
-                 auto_clear: bool):
+                 auto_clear_grad: bool,
+                 _auto_clear: bool):
         self.input_fields: List[TaichiField] = input_fields
         self.internal_fields: List[TaichiField] = weight_fields
         self.output_fields: List[TaichiField] = output_fields
         self.device: torch.device = device
-        self.auto_clear: bool = auto_clear
+        self.auto_clear_grad: bool = auto_clear_grad
+        self._auto_clear: bool = _auto_clear
 
 
 class TinFunc(torch.autograd.Function):
@@ -322,7 +337,7 @@ class TinFunc(torch.autograd.Function):
         ctx.tin_configs = tin_configs
         ctx.kernel_bundles = kernel_bundles
         assert len(input_tensors) == len(tin_configs.input_fields)
-        if tin_configs.auto_clear:
+        if tin_configs._auto_clear:
             for ti_field in tin_configs.output_fields:
                 ti_field.clear_field()
         for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
@@ -346,8 +361,8 @@ class TinFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_outputs: torch.Tensor):
-        tin_configs = ctx.tin_configs
-        if tin_configs.auto_clear:
+        tin_configs: TinConfigs = ctx.tin_configs
+        if tin_configs._auto_clear or tin_configs.auto_clear_grad:
             for ti_field in tin_configs.input_fields + tin_configs.internal_fields:
                 if ti_field.needs_grad:
                     ti_field.clear_grad()

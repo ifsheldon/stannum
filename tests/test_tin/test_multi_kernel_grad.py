@@ -28,7 +28,7 @@ def test_grad_with_data_oriented_class_multikernel():
     ti.init(ti.cpu, default_fp=ti.f32)
     data_oriented = Multiplier(2.0)
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented, device=device) \
+    tin_layer = Tin(data_oriented, device, True) \
         .register_kernel(data_oriented.forward_kernel1, 1.0, kernel_name="forward1") \
         .register_kernel(data_oriented.forward_kernel2, kernel_name="forward2") \
         .register_input_field(data_oriented.input_field) \
