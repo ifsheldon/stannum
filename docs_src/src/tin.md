@@ -17,7 +17,7 @@ import torch
 data_oriented = TiClass()  # some Taichi data-oriented class 
 device = torch.device("cpu")
 kernel_args = (1.0,)
-tin_layer = Tin(data_oriented, device=device)
+tin_layer = Tin(data_oriented, device=device, auto_clear_grad=True)
 .register_kernel(data_oriented.forward_kernel, *kernel_args, kernel_name="forward")  # on old Taichi
 # .register_kernel(data_oriented.forward_kernel, *kernel_args)  # on new Taichi
 .register_input_field(data_oriented.input_field)
@@ -49,7 +49,7 @@ def some_kernel(bias: float):
 
 device = torch.device("cpu")
 kernel_args = (1.0,)
-tin_layer = EmptyTin(device)\
+tin_layer = EmptyTin(device, True)\
     .register_kernel(some_kernel, *kernel_args)\
     .register_input_field(input_field)\
     .register_output_field(output_field)\
