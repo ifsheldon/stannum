@@ -25,7 +25,6 @@ class EmptyTin(torch.nn.Module):
         assert isinstance(device, torch.device), "device must be an instance of torch.device"
         self.device: torch.device = device
         self.tin_configs: TinConfigs = None
-        self.kernel_bundles: List[TaichiKernelBundle] = []
         self.kernel_bundle_dict: Dict[str, TaichiKernelBundle] = {}
         self.finished: bool = False
         EmptyTin.print_hint_for_packed_mode()
@@ -116,7 +115,6 @@ class EmptyTin(torch.nn.Module):
         assert is_kernel(kernel), "Passed function is not a Taichi kernel"
         kernel_bundle = TaichiKernelBundle(kernel, kernel_name, *kernel_args)
         assert kernel_bundle.name not in self.kernel_bundle_dict, f"Kernel name {kernel_bundle.name} already registered"
-        self.kernel_bundles.append(kernel_bundle)
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
@@ -145,7 +143,8 @@ class EmptyTin(torch.nn.Module):
         else:
             kernel_name = kernel.__name__
         assert kernel_name in self.kernel_bundle_dict, "Kernel not found, please register it first"
-        self.kernel_bundle_dict[kernel_name].args = kernel_args
+        old_bundle = self.kernel_bundle_dict[kernel_name]
+        self.kernel_bundle_dict[kernel_name] = TaichiKernelBundle(old_bundle.kernel, old_bundle.name, *kernel_args)
 
     def finish(self):
         """
@@ -154,9 +153,8 @@ class EmptyTin(torch.nn.Module):
         """
         assert len(self.input_fields) > 0, "Must register at least 1 input field"
         assert len(self.output_fields) > 0, "Must register at least 1 output field"
-        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
-        self.tin_configs = TinConfigs(self.kernel_bundles,
-                                      self.input_fields,
+        assert len(self.kernel_bundle_dict) > 0, "Must register at least 1 kernel"
+        self.tin_configs = TinConfigs(self.input_fields,
                                       list(self.internal_fields.values()),
                                       self.output_fields,
                                       self.device,
@@ -166,7 +164,7 @@ class EmptyTin(torch.nn.Module):
 
     def forward(self, *input_tensors: torch.Tensor):
         assert self.finished, "Please finish registrations by calling .finish() before using this layer"
-        return TinFunc.apply(self.tin_configs, *input_tensors)
+        return TinFunc.apply(self.tin_configs, list(self.kernel_bundle_dict.values()), *input_tensors)
 
     @staticmethod
     def print_hint_for_packed_mode():
@@ -317,13 +315,11 @@ class TinConfigs:
     """
 
     def __init__(self,
-                 ti_kernel_bundles: List[TaichiKernelBundle],
                  input_fields: List[TaichiField],
                  weight_fields: List[TaichiField],
                  output_fields: List[TaichiField],
                  device: torch.device,
                  auto_clear: bool):
-        self.kernel_bundles: List[TaichiKernelBundle] = ti_kernel_bundles
         self.input_fields: List[TaichiField] = input_fields
         self.internal_fields: List[TaichiField] = weight_fields
         self.output_fields: List[TaichiField] = output_fields
@@ -335,15 +331,16 @@ class TinFunc(torch.autograd.Function):
     """Customized autograd function used in Tin layers"""
 
     @staticmethod
-    def forward(ctx, tin_configs: TinConfigs, *input_tensors: torch.Tensor):
+    def forward(ctx, tin_configs: TinConfigs, kernel_bundles: List[TaichiKernelBundle], *input_tensors: torch.Tensor):
         ctx.tin_configs = tin_configs
+        ctx.kernel_bundles = kernel_bundles
         assert len(input_tensors) == len(tin_configs.input_fields)
         if tin_configs.auto_clear:
             for ti_field in tin_configs.output_fields:
                 ti_field.clear_field()
         for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
             field.from_torch(input_tensor)
-        for kernel_bundle in tin_configs.kernel_bundles:
+        for kernel_bundle in kernel_bundles:
             kernel_bundle.forward()
         output_tensors = []
         non_grad_tensors = []
@@ -370,9 +367,9 @@ class TinFunc(torch.autograd.Function):
         for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
             if output_field.needs_grad:
                 output_field.grad_from_torch(grad_output)
-        for kernel_bundle in reversed(tin_configs.kernel_bundles):
+        for kernel_bundle in reversed(ctx.kernel_bundles):
             kernel_bundle.backward()
-        gradient_tensors = [None]
+        gradient_tensors = [None, None]
         for input_field in tin_configs.input_fields:
             if input_field.needs_grad:
                 gradient_tensors.append(input_field.grad_to_torch(device=tin_configs.device))

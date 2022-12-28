@@ -36,7 +36,6 @@ class Tube(torch.nn.Module):
         self.output_placeholders: List[Seal] = []
         self.intermediate_field_placeholders: List[Seal] = []
         self.seals: Dict[str, Seal] = {}
-        self.kernel_bundles: List[TubeKernelBundle] = []
         self.device: Optional[torch.device] = device
         self._finished: bool = False
         self.batched: bool = False
@@ -174,7 +173,6 @@ class Tube(torch.nn.Module):
         kernel_bundle = TubeKernelBundle(kernel, name, seals, extra_args)
         assert kernel_bundle.name not in self.kernel_bundle_dict, \
             f"Kernel with name {kernel_bundle.name} already registered"
-        self.kernel_bundles.append(kernel_bundle)
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
@@ -190,7 +188,11 @@ class Tube(torch.nn.Module):
             kernel_name = kernel.__name__
         assert kernel_name in self.kernel_bundle_dict, \
             f"Kernel with name {kernel_name} not found, please register it first"
-        self.kernel_bundle_dict[kernel_name].extra_args = extra_args
+        old_kernel_bundle = self.kernel_bundle_dict[kernel_name]
+        self.kernel_bundle_dict[kernel_name] = TubeKernelBundle(old_kernel_bundle.kernel,
+                                                                old_kernel_bundle.name,
+                                                                old_kernel_bundle.seals,
+                                                                extra_args)
 
     def finish(self):
         """
@@ -200,7 +202,7 @@ class Tube(torch.nn.Module):
             return self
         assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
         assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
-        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
+        assert len(self.kernel_bundle_dict) > 0, "Must register at least 1 kernel"
         if self.batched:
             for output_seal in self.output_placeholders:
                 assert output_seal.batched, \
@@ -221,7 +223,7 @@ class Tube(torch.nn.Module):
         return self
 
     def forward(self, *input_tensors: torch.Tensor):
-        return self.func.apply(self, *input_tensors)
+        return self.func.apply(self, list(self.kernel_bundle_dict.values()), *input_tensors)
 
     from taichi import __version__ as ti_version
     if ti_version < (1, 1, 3):
@@ -508,8 +510,9 @@ def unify_and_concretize_shapes(tensor_shapes: List[Tuple[int, ...]],
 class EagerTubeFunc(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, tube: Tube, *input_tensors: torch.Tensor):
+    def forward(ctx, tube: Tube, kernel_bundles: List[TubeKernelBundle], *input_tensors: torch.Tensor):
         assert len(input_tensors) == len(tube.input_placeholders)
+        ctx.kernel_bundles = kernel_bundles
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
@@ -563,7 +566,7 @@ class EagerTubeFunc(torch.autograd.Function):
                 concrete_input_field.from_tensor(tensor)
 
             # forward pass
-            for kernel_bundle in tube.kernel_bundles:
+            for kernel_bundle in kernel_bundles:
                 kernel_bundle.forward(seal_name_to_concrete_fields)
 
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
@@ -626,7 +629,7 @@ class EagerTubeFunc(torch.autograd.Function):
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
                 # forward pass
-                for kernel_bundle in tube.kernel_bundles:
+                for kernel_bundle in kernel_bundles:
                     kernel_bundle.forward(seal_name_to_concrete_fields)
                 output_tensors = [ocf.to_tensor() for ocf in concrete_output_field_batch]
                 output_tensor_batches.append(output_tensors)
@@ -668,6 +671,7 @@ class EagerTubeFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
         tube = ctx.tube
+        kernel_bundles = ctx.kernel_bundles
         assert tube.enable_backward, "Attempting to run backward computation when enable_backward = False"
         input_tensor_num = ctx.input_tensor_num
         all_tensors = ctx.saved_tensors
@@ -718,10 +722,10 @@ class EagerTubeFunc(torch.autograd.Function):
                 for field in intermediate_concrete_fields + input_concrete_fields:
                     field.clear_grad()
             # backward pass
-            for kernel_bundle in reversed(tube.kernel_bundles):
+            for kernel_bundle in reversed(kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
-            gradient_tensors = [None]
+            gradient_tensors = [None, None]
             for input_concrete_field in input_concrete_fields:
                 if input_concrete_field.requires_grad:
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
@@ -799,7 +803,7 @@ class EagerTubeFunc(torch.autograd.Function):
                         if not seal.batched:
                             field.clear_grad()
                 # backward pass
-                for kernel_bundle in reversed(tube.kernel_bundles):
+                for kernel_bundle in reversed(kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
 
                 grad_tensor_batch = []
@@ -810,7 +814,7 @@ class EagerTubeFunc(torch.autograd.Function):
                         grad_tensor_batch.append(None)
                 gradients.append(grad_tensor_batch)
 
-            input_grads = [None]
+            input_grads = [None, None]
             for input_idx, input_seal in enumerate(input_seals):
                 grad_per_input = [gradients[batch_idx][input_idx] for batch_idx in range(batch_num)]
                 if any(map(lambda x: x is None, grad_per_input)):
@@ -841,8 +845,9 @@ class PersistentTubeFunc(torch.autograd.Function):
         return selected_concrete_fields
 
     @staticmethod
-    def forward(ctx, tube: Tube, *input_tensors: torch.Tensor):
+    def forward(ctx, tube: Tube, kernel_bundles: List[TubeKernelBundle], *input_tensors: torch.Tensor):
         assert len(input_tensors) == len(tube.input_placeholders)
+        ctx.kernel_bundles = kernel_bundles
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
@@ -887,7 +892,7 @@ class PersistentTubeFunc(torch.autograd.Function):
             for tensor, concrete_input_field in zip(input_tensors, input_concrete_fields):
                 concrete_input_field.from_tensor(tensor)
 
-            for kernel_bundle in tube.kernel_bundles:
+            for kernel_bundle in kernel_bundles:
                 kernel_bundle.forward(seal_name_to_concrete_fields)
 
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
@@ -942,7 +947,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                 input_tensor_batch = select_tensor(input_seals, input_tensors, batch_idx)
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
-                for kernel_bundle in tube.kernel_bundles:
+                for kernel_bundle in kernel_bundles:
                     kernel_bundle.forward(seal_name_to_concrete_fields)
                 output_tensors = [ocf.to_tensor() for ocf in concrete_output_field_batch]
                 output_tensor_batches.append(output_tensors)
@@ -970,6 +975,7 @@ class PersistentTubeFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
         tube: Tube = ctx.tube
+        kernel_bundles = ctx.kernel_bundles
         batch_num = ctx.batch_num
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
@@ -991,10 +997,10 @@ class PersistentTubeFunc(torch.autograd.Function):
                 # clear grad field due to uninitialized memory in old Taichi
                 for field in intermediate_concrete_fields + input_concrete_fields:
                     field.clear_grad()
-            for kernel_bundle in reversed(tube.kernel_bundles):
+            for kernel_bundle in reversed(kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
-            gradient_tensors = [None]
+            gradient_tensors = [None, None]
             for input_concrete_field in input_concrete_fields:
                 if input_concrete_field.requires_grad:
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
@@ -1029,7 +1035,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                                            input_concrete_field_batch + intermediate_concrete_field_batch):
                         if not seal.batched:
                             field.clear_grad()
-                for kernel_bundle in reversed(tube.kernel_bundles):
+                for kernel_bundle in reversed(kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
                 grad_tensor_batch = []
                 for input_concrete_field in input_concrete_field_batch:
@@ -1039,7 +1045,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                         grad_tensor_batch.append(None)
                 gradients.append(grad_tensor_batch)
 
-            input_grads = [None]
+            input_grads = [None, None]
             for input_idx, input_seal in enumerate(input_seals):
                 grad_per_input = [gradients[batch_idx][input_idx] for batch_idx in range(batch_num)]
                 if any(map(lambda x: x is None, grad_per_input)):
