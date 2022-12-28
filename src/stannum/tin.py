@@ -7,179 +7,6 @@ from warnings import warn
 import taichi
 
 
-class TaichiKernelBundle:
-    def __init__(self, kernel: Callable, kernel_name: str, *args):
-        self.kernel: Callable = kernel
-        self.name: str = kernel.__name__ if kernel_name is None else kernel_name
-        self.args: Tuple[Any, ...] = args
-
-    def forward(self):
-        self.kernel(*self.args)
-
-    def backward(self):
-        self.kernel.grad(*self.args)
-
-
-class TaichiField:
-    """An extensive wrapper around Taichi field"""
-
-    def __init__(self, field: Union[ScalarField, MatrixField],
-                 needs_grad: bool,
-                 name: str,
-                 complex_dtype: bool = False):
-        if isinstance(field, ScalarField):
-            if complex_dtype:
-                assert field.shape[-1] == 2, \
-                    f"Field {name}: ScalarField needs to have its last dimension to be 2 to hold complex values"
-                self.acceptable_tensor_shape = tuple(field.shape[:-1])
-            else:
-                self.acceptable_tensor_shape = tuple(field.shape)
-        elif isinstance(field, MatrixField):
-            if complex_dtype:
-                assert field.n == 2 and field.m == 1, \
-                    f"Field {name}: MatrixField needs to have its matrix dimension to be (2, 1) to hold complex values, " \
-                    f"got {(field.n, field.m)}"
-                self.acceptable_tensor_shape = tuple(field.shape)
-            else:
-                if field.m == 1:
-                    self.acceptable_tensor_shape = tuple(field.shape) + (field.n,)
-                else:
-                    self.acceptable_tensor_shape = tuple(field.shape) + (field.n, field.m)
-        else:
-            raise Exception(f"Field {name}: Only accept ti ScalarField or MatrixField, got {type(field)}")
-        self.field: Union[ScalarField, MatrixField] = field
-        self.grad: Union[ScalarField, MatrixField] = field.grad
-        self.needs_grad: bool = needs_grad
-        # TODO: wait for upstream support on complex numbers
-        self.complex_dtype: Optional[bool] = complex_dtype
-        self.name: str = name
-
-    def check_tensor_acceptable(self, tensor: torch.Tensor):
-        tensor_shape = tuple(tensor.shape)
-        if self.acceptable_tensor_shape != tensor_shape:
-            if self.complex_dtype:
-                raise Exception(
-                    f"Field {self.name}: Expecting a complex tensor of shape {self.acceptable_tensor_shape}, "
-                    f"got {tensor_shape}")
-            else:
-                raise Exception(f"Field {self.name}: Expecting a real tensor of shape {self.acceptable_tensor_shape}, "
-                                f"got {tensor_shape}")
-        if self.complex_dtype and tensor.dtype != torch.cfloat and tensor.dtype != torch.cdouble:
-            raise Exception(f"Field {self.name}: Expecting a complex tensor, got dtype = {tensor.dtype}")
-
-    def from_torch(self, tensor: torch.Tensor):
-        self.check_tensor_acceptable(tensor)
-        if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
-        self.field.from_torch(tensor)
-
-    def grad_from_torch(self, tensor: torch.Tensor):
-        self.check_tensor_acceptable(tensor)
-        if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
-        self.grad.from_torch(tensor)
-
-    def to_torch(self, device: Optional[torch.device] = None):
-        if device is not None:
-            tensor = self.field.to_torch(device)
-        else:
-            tensor = self.field.to_torch()
-        if self.complex_dtype:
-            tensor = torch.view_as_complex(tensor)
-        return tensor
-
-    def grad_to_torch(self, device: Optional[torch.device] = None):
-        if device is not None:
-            tensor = self.grad.to_torch(device)
-        else:
-            tensor = self.grad.to_torch()
-        if self.complex_dtype:
-            tensor = torch.view_as_complex(tensor)
-        return tensor
-
-    def clear_field(self):
-        self.field.fill(0)
-
-    def clear_grad(self):
-        if self.needs_grad:
-            self.grad.fill(0)
-
-
-class TinConfigs:
-    """
-    A "struct" for storing objects needed in TinFunc
-    """
-
-    def __init__(self,
-                 ti_kernel_bundles: List[TaichiKernelBundle],
-                 input_fields: List[TaichiField],
-                 weight_fields: List[TaichiField],
-                 output_fields: List[TaichiField],
-                 device: torch.device,
-                 auto_clear: bool):
-        self.kernel_bundles: List[TaichiKernelBundle] = ti_kernel_bundles
-        self.input_fields: List[TaichiField] = input_fields
-        self.internal_fields: List[TaichiField] = weight_fields
-        self.output_fields: List[TaichiField] = output_fields
-        self.device: torch.device = device
-        self.auto_clear: bool = auto_clear
-
-
-class TinFunc(torch.autograd.Function):
-    """Customized autograd function used in Tin layers"""
-
-    @staticmethod
-    def forward(ctx, tin_configs: TinConfigs, *input_tensors: torch.Tensor):
-        ctx.tin_configs = tin_configs
-        assert len(input_tensors) == len(tin_configs.input_fields)
-        if tin_configs.auto_clear:
-            for ti_field in tin_configs.output_fields:
-                ti_field.clear_field()
-        for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
-            field.from_torch(input_tensor)
-        for kernel_bundle in tin_configs.kernel_bundles:
-            kernel_bundle.forward()
-        output_tensors = []
-        non_grad_tensors = []
-        for output_field in tin_configs.output_fields:
-            output_tensor = output_field.to_torch(device=tin_configs.device).requires_grad_(output_field.needs_grad)
-            if not output_field.needs_grad:
-                non_grad_tensors.append(output_tensor)
-            output_tensors.append(output_tensor)
-
-        ctx.mark_non_differentiable(*non_grad_tensors)
-
-        if len(output_tensors) > 1:
-            return tuple(output_tensors)
-        else:
-            return output_tensors[0]
-
-    @staticmethod
-    def backward(ctx, *grad_outputs: torch.Tensor):
-        tin_configs = ctx.tin_configs
-        if tin_configs.auto_clear:
-            for ti_field in tin_configs.input_fields + tin_configs.internal_fields:
-                if ti_field.needs_grad:
-                    ti_field.clear_grad()
-        for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
-            if output_field.needs_grad:
-                output_field.grad_from_torch(grad_output)
-        for kernel_bundle in reversed(tin_configs.kernel_bundles):
-            kernel_bundle.backward()
-        gradient_tensors = [None]
-        for input_field in tin_configs.input_fields:
-            if input_field.needs_grad:
-                gradient_tensors.append(input_field.grad_to_torch(device=tin_configs.device))
-            else:
-                gradient_tensors.append(None)
-
-        if any(map(lambda x: x.needs_grad, tin_configs.internal_fields)):
-            warn("\nSome internal fields require gradients.\n"
-                 "Although they got gradients during back propagation in the grad field,\n"
-                 "values of them will NOT be updated automatically")
-        return tuple(gradient_tensors)
-
-
 class EmptyTin(torch.nn.Module):
     """A Taichi field wrapper that requires no @ti.data_oriented class"""
 
@@ -384,3 +211,176 @@ class Tin(EmptyTin):
         assert autofill_kernel_name_available(kernel) or kernel_name is not None
         super(Tin, self).register_kernel(kernel, *kernel_args, kernel_name=kernel_name)
         return self
+
+
+class TaichiKernelBundle:
+    def __init__(self, kernel: Callable, kernel_name: str, *args):
+        self.kernel: Callable = kernel
+        self.name: str = kernel.__name__ if kernel_name is None else kernel_name
+        self.args: Tuple[Any, ...] = args
+
+    def forward(self):
+        self.kernel(*self.args)
+
+    def backward(self):
+        self.kernel.grad(*self.args)
+
+
+class TaichiField:
+    """An extensive wrapper around Taichi field"""
+
+    def __init__(self, field: Union[ScalarField, MatrixField],
+                 needs_grad: bool,
+                 name: str,
+                 complex_dtype: bool = False):
+        if isinstance(field, ScalarField):
+            if complex_dtype:
+                assert field.shape[-1] == 2, \
+                    f"Field {name}: ScalarField needs to have its last dimension to be 2 to hold complex values"
+                self.acceptable_tensor_shape = tuple(field.shape[:-1])
+            else:
+                self.acceptable_tensor_shape = tuple(field.shape)
+        elif isinstance(field, MatrixField):
+            if complex_dtype:
+                assert field.n == 2 and field.m == 1, \
+                    f"Field {name}: MatrixField needs to have its matrix dimension to be (2, 1) to hold complex values, " \
+                    f"got {(field.n, field.m)}"
+                self.acceptable_tensor_shape = tuple(field.shape)
+            else:
+                if field.m == 1:
+                    self.acceptable_tensor_shape = tuple(field.shape) + (field.n,)
+                else:
+                    self.acceptable_tensor_shape = tuple(field.shape) + (field.n, field.m)
+        else:
+            raise Exception(f"Field {name}: Only accept ti ScalarField or MatrixField, got {type(field)}")
+        self.field: Union[ScalarField, MatrixField] = field
+        self.grad: Union[ScalarField, MatrixField] = field.grad
+        self.needs_grad: bool = needs_grad
+        # TODO: wait for upstream support on complex numbers
+        self.complex_dtype: Optional[bool] = complex_dtype
+        self.name: str = name
+
+    def check_tensor_acceptable(self, tensor: torch.Tensor):
+        tensor_shape = tuple(tensor.shape)
+        if self.acceptable_tensor_shape != tensor_shape:
+            if self.complex_dtype:
+                raise Exception(
+                    f"Field {self.name}: Expecting a complex tensor of shape {self.acceptable_tensor_shape}, "
+                    f"got {tensor_shape}")
+            else:
+                raise Exception(f"Field {self.name}: Expecting a real tensor of shape {self.acceptable_tensor_shape}, "
+                                f"got {tensor_shape}")
+        if self.complex_dtype and tensor.dtype != torch.cfloat and tensor.dtype != torch.cdouble:
+            raise Exception(f"Field {self.name}: Expecting a complex tensor, got dtype = {tensor.dtype}")
+
+    def from_torch(self, tensor: torch.Tensor):
+        self.check_tensor_acceptable(tensor)
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        self.field.from_torch(tensor)
+
+    def grad_from_torch(self, tensor: torch.Tensor):
+        self.check_tensor_acceptable(tensor)
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        self.grad.from_torch(tensor)
+
+    def to_torch(self, device: Optional[torch.device] = None):
+        if device is not None:
+            tensor = self.field.to_torch(device)
+        else:
+            tensor = self.field.to_torch()
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def grad_to_torch(self, device: Optional[torch.device] = None):
+        if device is not None:
+            tensor = self.grad.to_torch(device)
+        else:
+            tensor = self.grad.to_torch()
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def clear_field(self):
+        self.field.fill(0)
+
+    def clear_grad(self):
+        if self.needs_grad:
+            self.grad.fill(0)
+
+
+class TinConfigs:
+    """
+    A "struct" for storing objects needed in TinFunc
+    """
+
+    def __init__(self,
+                 ti_kernel_bundles: List[TaichiKernelBundle],
+                 input_fields: List[TaichiField],
+                 weight_fields: List[TaichiField],
+                 output_fields: List[TaichiField],
+                 device: torch.device,
+                 auto_clear: bool):
+        self.kernel_bundles: List[TaichiKernelBundle] = ti_kernel_bundles
+        self.input_fields: List[TaichiField] = input_fields
+        self.internal_fields: List[TaichiField] = weight_fields
+        self.output_fields: List[TaichiField] = output_fields
+        self.device: torch.device = device
+        self.auto_clear: bool = auto_clear
+
+
+class TinFunc(torch.autograd.Function):
+    """Customized autograd function used in Tin layers"""
+
+    @staticmethod
+    def forward(ctx, tin_configs: TinConfigs, *input_tensors: torch.Tensor):
+        ctx.tin_configs = tin_configs
+        assert len(input_tensors) == len(tin_configs.input_fields)
+        if tin_configs.auto_clear:
+            for ti_field in tin_configs.output_fields:
+                ti_field.clear_field()
+        for input_tensor, field in zip(input_tensors, tin_configs.input_fields):
+            field.from_torch(input_tensor)
+        for kernel_bundle in tin_configs.kernel_bundles:
+            kernel_bundle.forward()
+        output_tensors = []
+        non_grad_tensors = []
+        for output_field in tin_configs.output_fields:
+            output_tensor = output_field.to_torch(device=tin_configs.device).requires_grad_(output_field.needs_grad)
+            if not output_field.needs_grad:
+                non_grad_tensors.append(output_tensor)
+            output_tensors.append(output_tensor)
+
+        ctx.mark_non_differentiable(*non_grad_tensors)
+
+        if len(output_tensors) > 1:
+            return tuple(output_tensors)
+        else:
+            return output_tensors[0]
+
+    @staticmethod
+    def backward(ctx, *grad_outputs: torch.Tensor):
+        tin_configs = ctx.tin_configs
+        if tin_configs.auto_clear:
+            for ti_field in tin_configs.input_fields + tin_configs.internal_fields:
+                if ti_field.needs_grad:
+                    ti_field.clear_grad()
+        for grad_output, output_field in zip(grad_outputs, tin_configs.output_fields):
+            if output_field.needs_grad:
+                output_field.grad_from_torch(grad_output)
+        for kernel_bundle in reversed(tin_configs.kernel_bundles):
+            kernel_bundle.backward()
+        gradient_tensors = [None]
+        for input_field in tin_configs.input_fields:
+            if input_field.needs_grad:
+                gradient_tensors.append(input_field.grad_to_torch(device=tin_configs.device))
+            else:
+                gradient_tensors.append(None)
+
+        if any(map(lambda x: x.needs_grad, tin_configs.internal_fields)):
+            warn("\nSome internal fields require gradients.\n"
+                 "Although they got gradients during back propagation in the grad field,\n"
+                 "values of them will NOT be updated automatically")
+        return tuple(gradient_tensors)

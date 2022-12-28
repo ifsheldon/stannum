@@ -11,173 +11,6 @@ from .utils import is_kernel, autofill_kernel_name_available
 from .auxiliary import FieldManager, SNode
 
 
-class DefaultFieldManager(FieldManager):
-    """
-    Default field manager which layouts data in tensors by constructing fields
-    with the ordinary multidimensional array layout
-    """
-
-    def __init__(self,
-                 dtype: TiDataType,
-                 complex_dtype: bool,
-                 device: torch.device):
-        self.dtype: TiDataType = dtype
-        self.complex_dtype: bool = complex_dtype
-        self.device: torch.device = device
-
-    def construct_field(self,
-                        fields_builder: ti.FieldsBuilder,
-                        concrete_tensor_shape: Tuple[int, ...],
-                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
-        assert not fields_builder.finalized
-        if self.complex_dtype:
-            field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
-        else:
-            field = ti.field(self.dtype, needs_grad=needs_grad)
-
-        if needs_grad:
-            fields_builder \
-                .dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape) \
-                .place(field, field.grad)
-        else:
-            fields_builder.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
-        return field
-
-    def to_tensor(self, field: Union[ScalarField, MatrixField]) -> torch.Tensor:
-        tensor = field.to_torch(device=self.device)
-        if self.complex_dtype:
-            tensor = torch.view_as_complex(tensor)
-        return tensor
-
-    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -> torch.Tensor:
-        tensor = grad_field.to_torch(device=self.device)
-        if self.complex_dtype:
-            tensor = torch.view_as_complex(tensor)
-        return tensor
-
-    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
-        if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
-        field.from_torch(tensor)
-
-    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
-        if self.complex_dtype:
-            tensor = torch.view_as_real(tensor)
-        grad_field.from_torch(tensor)
-
-
-class ConcreteField:
-    """
-    An extension of Taichi fields with auto deconstruction
-    """
-
-    def __init__(self,
-                 dtype: TiDataType,
-                 concrete_tensor_shape: Tuple[int, ...],
-                 field_manager: FieldManager,
-                 fields_builder: ti.FieldsBuilder,
-                 complex_dtype: bool,
-                 requires_grad: bool,
-                 device: torch.device,
-                 name: str):
-        assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
-        if field_manager is None:
-            field_manager = DefaultFieldManager(dtype, complex_dtype, device)
-        field = field_manager.construct_field(fields_builder, concrete_tensor_shape, requires_grad)
-        self.fb = fields_builder
-        self.complex_dtype: bool = complex_dtype
-        self.field: Union[ScalarField, MatrixField] = field
-        self.device: torch.device = device
-        self.name: str = name
-        self.field_manager: FieldManager = field_manager
-        self.requires_grad: bool = requires_grad
-
-    def clear_grad(self):
-        assert self.fb.finalized
-        if self.requires_grad:
-            self.field.grad.fill(0)
-
-    def clear_field(self):
-        assert self.fb.finalized
-        self.field.fill(0)
-
-    def to_tensor(self) -> torch.Tensor:
-        return self.field_manager.to_tensor(self.field)
-
-    def grad_to_tensor(self) -> torch.Tensor:
-        return self.field_manager.grad_to_tensor(self.field.grad)
-
-    def from_tensor(self, tensor):
-        self.field_manager.from_tensor(self.field, tensor)
-
-    def grad_from_tensor(self, tensor):
-        self.field_manager.grad_from_tensor(self.field.grad, tensor)
-
-
-class Seal:
-
-    def __init__(self, dtype: Union[TiDataType, torch.dtype],
-                 *dims: int,
-                 field_manager: Optional[FieldManager] = None,
-                 requires_grad: Optional[bool] = None,
-                 name: Optional[str] = None):
-        assert dtype is not None, "dtype must not be None"
-        # validate dims
-        if len(dims) > 0:  # not scalar
-            if dims[0] is None:
-                for i in range(1, len(dims)):
-                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
-            else:
-                for i in range(len(dims)):
-                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
-
-        for i in dims:
-            assert i != 0, f"Dimension cannot be 0, got {dims}"
-
-        self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
-        if self.complex_dtype:
-            dtype = ti.f32 if dtype == torch.cfloat else ti.f64
-        self.dtype: TiDataType = to_taichi_type(dtype) if dtype is not None else dtype
-        self.field_manager: FieldManager = field_manager
-        self.dims: Tuple[int, ...] = dims
-        self.batched: bool = len(dims) > 0 and dims[0] is None
-        self.name: str = name
-        self.requires_grad: bool = requires_grad
-
-    def concretize(self, concrete_shape: Tuple[int, ...],
-                   fields_builder: ti.FieldsBuilder,
-                   device: torch.device,
-                   needs_grad: bool) -> ConcreteField:
-        return ConcreteField(self.dtype, concrete_shape,
-                             self.field_manager, fields_builder,
-                             self.complex_dtype,
-                             needs_grad if self.requires_grad is None else self.requires_grad,
-                             device, self.name)
-
-
-class TubeKernelBundle:
-    """
-    Extension of Taichi kernel
-    """
-
-    def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal], extra_args: Tuple[Any, ...]):
-        self.kernel: Callable = kernel
-        self.name: str = kernel.__name__ if name is None else name
-        self.seals: List[Seal] = seals
-        self.seal_names: List[str] = [s.name for s in seals]
-        self.extra_args: Tuple[Any, ...] = extra_args
-
-    def forward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
-        concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
-        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
-        self.kernel(*(ti_fields + self.extra_args))
-
-    def backward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
-        concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
-        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
-        self.kernel.grad(*(ti_fields + self.extra_args))
-
-
 class Tube(torch.nn.Module):
     """
     Self-managed Taichi-PyTorch adapter
@@ -398,6 +231,173 @@ class Tube(torch.nn.Module):
                       f"Using Tube with old Taichi may suffer from performance downgrade. "
                       f"See Stannum issue #9 for more information.",
                       stacklevel=2)
+
+
+class DefaultFieldManager(FieldManager):
+    """
+    Default field manager which layouts data in tensors by constructing fields
+    with the ordinary multidimensional array layout
+    """
+
+    def __init__(self,
+                 dtype: TiDataType,
+                 complex_dtype: bool,
+                 device: torch.device):
+        self.dtype: TiDataType = dtype
+        self.complex_dtype: bool = complex_dtype
+        self.device: torch.device = device
+
+    def construct_field(self,
+                        fields_builder: ti.FieldsBuilder,
+                        concrete_tensor_shape: Tuple[int, ...],
+                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
+        assert not fields_builder.finalized
+        if self.complex_dtype:
+            field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
+        else:
+            field = ti.field(self.dtype, needs_grad=needs_grad)
+
+        if needs_grad:
+            fields_builder \
+                .dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape) \
+                .place(field, field.grad)
+        else:
+            fields_builder.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
+        return field
+
+    def to_tensor(self, field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+        tensor = field.to_torch(device=self.device)
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+        tensor = grad_field.to_torch(device=self.device)
+        if self.complex_dtype:
+            tensor = torch.view_as_complex(tensor)
+        return tensor
+
+    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        field.from_torch(tensor)
+
+    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+        if self.complex_dtype:
+            tensor = torch.view_as_real(tensor)
+        grad_field.from_torch(tensor)
+
+
+class ConcreteField:
+    """
+    An extension of Taichi fields with auto deconstruction
+    """
+
+    def __init__(self,
+                 dtype: TiDataType,
+                 concrete_tensor_shape: Tuple[int, ...],
+                 field_manager: FieldManager,
+                 fields_builder: ti.FieldsBuilder,
+                 complex_dtype: bool,
+                 requires_grad: bool,
+                 device: torch.device,
+                 name: str):
+        assert all(map(lambda x: isinstance(x, int), concrete_tensor_shape))
+        if field_manager is None:
+            field_manager = DefaultFieldManager(dtype, complex_dtype, device)
+        field = field_manager.construct_field(fields_builder, concrete_tensor_shape, requires_grad)
+        self.fb = fields_builder
+        self.complex_dtype: bool = complex_dtype
+        self.field: Union[ScalarField, MatrixField] = field
+        self.device: torch.device = device
+        self.name: str = name
+        self.field_manager: FieldManager = field_manager
+        self.requires_grad: bool = requires_grad
+
+    def clear_grad(self):
+        assert self.fb.finalized
+        if self.requires_grad:
+            self.field.grad.fill(0)
+
+    def clear_field(self):
+        assert self.fb.finalized
+        self.field.fill(0)
+
+    def to_tensor(self) -> torch.Tensor:
+        return self.field_manager.to_tensor(self.field)
+
+    def grad_to_tensor(self) -> torch.Tensor:
+        return self.field_manager.grad_to_tensor(self.field.grad)
+
+    def from_tensor(self, tensor):
+        self.field_manager.from_tensor(self.field, tensor)
+
+    def grad_from_tensor(self, tensor):
+        self.field_manager.grad_from_tensor(self.field.grad, tensor)
+
+
+class Seal:
+
+    def __init__(self, dtype: Union[TiDataType, torch.dtype],
+                 *dims: int,
+                 field_manager: Optional[FieldManager] = None,
+                 requires_grad: Optional[bool] = None,
+                 name: Optional[str] = None):
+        assert dtype is not None, "dtype must not be None"
+        # validate dims
+        if len(dims) > 0:  # not scalar
+            if dims[0] is None:
+                for i in range(1, len(dims)):
+                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+            else:
+                for i in range(len(dims)):
+                    assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+
+        for i in dims:
+            assert i != 0, f"Dimension cannot be 0, got {dims}"
+
+        self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
+        if self.complex_dtype:
+            dtype = ti.f32 if dtype == torch.cfloat else ti.f64
+        self.dtype: TiDataType = to_taichi_type(dtype) if dtype is not None else dtype
+        self.field_manager: FieldManager = field_manager
+        self.dims: Tuple[int, ...] = dims
+        self.batched: bool = len(dims) > 0 and dims[0] is None
+        self.name: str = name
+        self.requires_grad: bool = requires_grad
+
+    def concretize(self, concrete_shape: Tuple[int, ...],
+                   fields_builder: ti.FieldsBuilder,
+                   device: torch.device,
+                   needs_grad: bool) -> ConcreteField:
+        return ConcreteField(self.dtype, concrete_shape,
+                             self.field_manager, fields_builder,
+                             self.complex_dtype,
+                             needs_grad if self.requires_grad is None else self.requires_grad,
+                             device, self.name)
+
+
+class TubeKernelBundle:
+    """
+    Extension of Taichi kernel
+    """
+
+    def __init__(self, kernel: Callable, name: Optional[str], seals: List[Seal], extra_args: Tuple[Any, ...]):
+        self.kernel: Callable = kernel
+        self.name: str = kernel.__name__ if name is None else name
+        self.seals: List[Seal] = seals
+        self.seal_names: List[str] = [s.name for s in seals]
+        self.extra_args: Tuple[Any, ...] = extra_args
+
+    def forward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
+        concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
+        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
+        self.kernel(*(ti_fields + self.extra_args))
+
+    def backward(self, seal_name_to_concrete_field: Dict[str, ConcreteField]):
+        concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
+        ti_fields = tuple(map(lambda x: x.field, concrete_fields))
+        self.kernel.grad(*(ti_fields + self.extra_args))
 
 
 def concretize(device: torch.device,
