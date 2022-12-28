@@ -1,10 +1,9 @@
 import torch
-from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, need_auto_clearing_fields, eprint
+from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, need_auto_clearing_fields
 from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
 from warnings import warn
-import taichi
 
 
 class EmptyTin(torch.nn.Module):
@@ -27,7 +26,6 @@ class EmptyTin(torch.nn.Module):
         self.tin_configs: TinConfigs = None
         self.kernel_bundle_dict: Dict[str, TaichiKernelBundle] = {}
         self.finished: bool = False
-        EmptyTin.print_hint_for_packed_mode()
 
     def register_input_field(self, field: Union[ScalarField, MatrixField],
                              name: Optional[str] = None,
@@ -165,17 +163,6 @@ class EmptyTin(torch.nn.Module):
     def forward(self, *input_tensors: torch.Tensor):
         assert self.finished, "Please finish registrations by calling .finish() before using this layer"
         return TinFunc.apply(self.tin_configs, list(self.kernel_bundle_dict.values()), *input_tensors)
-
-    @staticmethod
-    def print_hint_for_packed_mode():
-        """
-        Print the hint only once to remind users of potential optimizations
-        """
-        if not taichi.cfg.packed and not hasattr(EmptyTin.print_hint_for_packed_mode, "has_run"):
-            eprint("Hint from Stannum: Not enabled packed mode of Taichi. "
-                   "If you care about memory occupancy, enabling packed mode can help. "
-                   "For more info, refer to https://docs.taichi-lang.org/docs/layout#packed-mode")
-            EmptyTin.print_hint_for_packed_mode.has_run = None
 
 
 class Tin(EmptyTin):
