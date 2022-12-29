@@ -268,14 +268,18 @@ class Tube(torch.nn.Module):
         return self
 
     def register_output_tensor(self,
+                               dims_or_calc: Union[
+                                   Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                   Union[Callable, DimensionCalculator]],
                                dtype: torch.dtype,
                                name: str,
                                requires_grad: bool,
-                               dims: Optional[Iterable[Union[int, None]]] = None,
-                               dim_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                                field_manager: Optional[FieldManager] = None):
         """
         Register an output tensor
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
         @param dtype: torch data type
         @param name: name of the tensor and corresponding field
         @param dims: dims can contain `None`, positive and negative numbers,
@@ -291,38 +295,42 @@ class Tube(torch.nn.Module):
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
-        if dims is not None:
-            assert not any(map(lambda d: d == -1, dims)), \
+        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
+            seal = Seal(dtype,
+                        shape_calc=dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=requires_grad,
+                        name=name)
+        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
+            assert not any(map(lambda d: d == -1, dims_or_calc)), \
                 "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
-            seal = Seal(dtype, *dims,
+            seal = Seal(dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=requires_grad,
                         name=name)
-            seal.batched = len(dims) > 0 and dims[0] is None
-        elif dim_calc is not None:
-            seal = Seal(dtype, None,
-                        shape_calc=dim_calc,
-                        field_manager=field_manager,
-                        requires_grad=requires_grad,
-                        name=name)
+            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
         else:
-            raise Exception("You need to specify either dims or shape_calc to tell Tube the shape of output tensors")
+            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
 
         self.output_placeholders.append(seal)
         self.seals[name] = seal
         return self
 
     def register_intermediate_field(self,
+                                    dims_or_calc: Union[
+                                        Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                        Union[Callable, DimensionCalculator]],
                                     ti_dtype: TiDataType,
                                     name: str,
                                     needs_grad: bool,
-                                    dims: Optional[Iterable[Union[int, None]]] = None,
-                                    dim_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                                     field_manager: Optional[FieldManager] = None):
         """
         Register an intermediate field,
         which can be useful if multiple kernels are used and intermediate results between kernels are stored
 
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
         @param ti_dtype: taichi data type
         @param name: name of the field
         @param needs_grad: if the field needs gradients.
@@ -337,23 +345,22 @@ class Tube(torch.nn.Module):
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
-        if dims is not None:
-            assert not any(map(lambda d: d == -1, dims)), \
+        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
+            seal = Seal(ti_dtype,
+                        shape_calc=dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=needs_grad,
+                        name=name)
+        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
+            assert not any(map(lambda d: d == -1, dims_or_calc)), \
                 "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
-            seal = Seal(ti_dtype, *dims,
+            seal = Seal(ti_dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=needs_grad,
                         name=name)
-            seal.batched = len(dims) > 0 and dims[0] is None
-        elif dim_calc is not None:
-            seal = Seal(ti_dtype, None,
-                        shape_calc=dim_calc,
-                        field_manager=field_manager,
-                        requires_grad=needs_grad,
-                        name=name)
+            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
         else:
-            raise Exception(
-                "You need to specify either dims or shape_calc to tell Tube the shape of intermediate fields")
+            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
         self.intermediate_field_placeholders.append(seal)
         self.seals[name] = seal
         return self
