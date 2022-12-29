@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="stannum",
-    version="0.8.0",
+    version="0.9.0",
     author="Feng Liang",
     author_email="feng.liang@kaust.edu.sa",
     description="Fusing Taichi into PyTorch",
