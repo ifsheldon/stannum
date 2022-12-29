@@ -58,6 +58,7 @@ class Tube(torch.nn.Module):
                               field_manager: Optional[FieldManager] = None):
         """
         Register an input tensor
+
         @param dims: dims can contain `None`, positive and negative numbers,
         for restrictions and requirements, see README
         @param dtype: torch data type
@@ -90,6 +91,7 @@ class Tube(torch.nn.Module):
                                field_manager: Optional[FieldManager] = None):
         """
         Register an output tensor
+
         @param dims_or_calc: dims can contain `None`, positive and negative numbers,
         for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
         to dynamically calculate dimensions
@@ -203,7 +205,7 @@ class Tube(torch.nn.Module):
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
-    def set_kernel_extra_args(self, kernel: Callable| str, *extra_args: Any):
+    def set_kernel_extra_args(self, kernel: Callable | str, *extra_args: Any):
         """
         Set args for a kernel
         @param kernel: kernel function or its name
@@ -499,7 +501,7 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
                                 output_placeholders: List[Seal]) \
         -> Tuple[List[List[int]], List[List[int]], List[List[int]], int | None]:
     """
-    Try to find out concrete numbers in dimension placeholders (like `None`, `-1`, `-2`)
+    Try to find out concrete numbers in dimension placeholders (like AnyDim, MatchDim, BatchDim)
     """
     input_dims = list(map(lambda x: x.dims, input_placeholders))
 
@@ -581,7 +583,7 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
                 concrete_intermediate_dims[idx][i] = batch_num
             elif is_match_dim(d):
                 concrete_intermediate_dims[idx][i] = dim_id_to_shape[d.dim_id]
-            elif is_any_dim(d):  # d > 0, no d == -1
+            elif is_any_dim(d):
                 raise Exception("Dim = Any is not allowed when constructing intermediate fields "
                                 "but only registering input tensors. "
                                 "If you are using a DimensionCalculator, check it. "
