@@ -112,7 +112,8 @@ BatchDim = DimEnum(DimEnum.BATCH_ID, None)
 
 
 def MatchDim(dim_id: DimID):
-    assert isinstance(dim_id, DimID), f"Unsupported dim_id type of {type(dim_id)}"
+    # legacy Python cannot handle isinstance(dim_id, DimID)
+    assert isinstance(dim_id, (str, int)), f"Unsupported dim_id type of {type(dim_id)}"
     return DimEnum(DimEnum.MATCH_ID, dim_id)
 
 
