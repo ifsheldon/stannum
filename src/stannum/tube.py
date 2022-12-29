@@ -73,6 +73,9 @@ class Tube(torch.nn.Module):
         assert name not in self.seals, "name registered"
         assert all(map(lambda d: isinstance(d, DimOption), dims)), \
             f"dims must be all DimOptions, got {dims}"
+        assert all(map(lambda x: x > 0,
+                       filter(lambda x: isinstance(x, int), dims))), \
+            f"all integer dims must be positive, got {dims}"
         seal = Seal(dtype, *dims,
                     field_manager=field_manager,
                     requires_grad=requires_grad,
@@ -121,6 +124,9 @@ class Tube(torch.nn.Module):
                 f"dims must be all DimOptions, got {dims_or_calc}"
             assert not any(map(is_any_dim, dims_or_calc)), \
                 "Dim = Any is not allowed when registering output tensors but only registering input tensors"
+            assert all(map(lambda x: x > 0,
+                           filter(lambda x: isinstance(x, int), dims_or_calc))), \
+                f"all integer dims must be positive, got {dims_or_calc}"
             seal = Seal(dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=requires_grad,
@@ -171,6 +177,9 @@ class Tube(torch.nn.Module):
                 f"dims must be all DimOptions, got {dims_or_calc}"
             assert not any(map(is_any_dim, dims_or_calc)), \
                 "Dim = Any is not allowed when registering intermediate fields but only registering input tensors"
+            assert all(map(lambda x: x > 0,
+                           filter(lambda x: isinstance(x, int), dims_or_calc))), \
+                f"all integer dims must be positive, got {dims_or_calc}"
             seal = Seal(ti_dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=needs_grad,
