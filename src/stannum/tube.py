@@ -376,7 +376,7 @@ class Seal:
                  requires_grad: Optional[bool] = None,
                  name: Optional[str] = None):
         assert dtype is not None, "dtype must not be None"
-        if shape_calc is None:
+        if shape_calc is None:  # explicit dims
             # validate dims
             if len(dims) > 0:  # if it is not a scalar, further check
                 if dims[0] is None:
@@ -419,9 +419,9 @@ class Seal:
                         input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
         assert self.dims_calc is not None
         if isinstance(self.dims_calc, DimensionCalculator):
-            dimensions = self.dims_calc.calc_dimension(self.name, input_tensor_dimensions, input_tensor_shapes)
+            dimensions = self.dims_calc.calc_dimension(self.name, input_dimensions, input_tensor_shapes)
         else:
-            dimensions = self.dims_calc(self.name, input_tensor_dimensions, input_tensor_shapes)
+            dimensions = self.dims_calc(self.name, input_dimensions, input_tensor_shapes)
 
         self.batched = len(dimensions) > 0 and dimensions[0] is None
         return dimensions
@@ -451,15 +451,15 @@ class TubeKernelBundle:
 
 
 def is_batch_dim(dim_opt: DimOption):
-    return isinstance(dim_opt, DimEnum) and dim_opt.is_batch()
+    return isinstance(dim_opt, DimEnum) and dim_opt.id == DimEnum.BATCH_ID
 
 
 def is_match_dim(dim_opt: DimOption):
-    return isinstance(dim_opt, DimEnum) and dim_opt.is_match()
+    return isinstance(dim_opt, DimEnum) and dim_opt.id == DimEnum.MATCH_ID
 
 
 def is_any_dim(dim_opt: DimOption):
-    return isinstance(dim_opt, DimEnum) and dim_opt.is_any()
+    return isinstance(dim_opt, DimEnum) and dim_opt.id == DimEnum.ANY_ID
 
 
 def concretize(device: torch.device,
@@ -486,12 +486,10 @@ def select_concrete_field(seals: List[Seal],
                           concrete_fields: List[Union[ConcreteField, List[ConcreteField]]],
                           batch_idx: int) -> List[ConcreteField]:
     assert len(seals) == len(concrete_fields)
-    selected_concrete_fields = []
-    for seal, concrete_field in zip(seals, concrete_fields):
-        if seal.batched:
-            selected_concrete_fields.append(concrete_field[batch_idx])
-        else:
-            selected_concrete_fields.append(concrete_field)
+    selected_concrete_fields = [
+        concrete_field[batch_idx] if seal.batched else concrete_field
+        for seal, concrete_field in zip(seals, concrete_fields)
+    ]
     return selected_concrete_fields
 
 
@@ -499,7 +497,7 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
                                 input_placeholders: List[Seal],
                                 intermediate_fields: List[Seal],
                                 output_placeholders: List[Seal]) \
-        -> Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]], List[Tuple[int, ...]], Optional[int]]:
+        -> Tuple[List[List[int]], List[List[int]], List[List[int]], int | None]:
     """
     Try to find out concrete numbers in dimension placeholders (like `None`, `-1`, `-2`)
     """
@@ -522,9 +520,9 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
             assert all(map(lambda x, y: y < 0 or x == y, tensor_shape, input_dim)), \
                 f"{i}th tensor dimensions not match, expect: {input_dim}, got {tensor_shape}"
 
-    # fill in <0 dimensions and batch dimension
-    concrete_input_dims = list(map(list, input_dims))
-    neg_dims = {}
+    # fill in {Any, Match} dimensions and batch dimension
+    concrete_input_dims: List[List[int]] = list(map(list, input_dims))
+    dim_id_to_shape: Dict[DimID, int] = {}
     for idx, input_dim in enumerate(input_dims):
         for i, d in enumerate(input_dim):
             if d is None:
@@ -549,8 +547,8 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
     get_dims = lambda x: x.dims if x.dims is not None \
         else x.calc_dimensions(input_tensor_dimensions_dict, input_tensor_shapes_dict)
 
-    output_dims = list(map(get_dims, output_placeholders))
-    intermediate_dims = list(map(get_dims, intermediate_fields))
+    output_dims: List[Tuple[DimOption, ...] | List[DimOption]] = list(map(get_dims, output_placeholders))
+    intermediate_dims: List[Tuple[DimOption, ...] | List[DimOption]] = list(map(get_dims, intermediate_fields))
     # batching check
     if batch_num is not None:  # batching
         for seal in output_placeholders + intermediate_fields:
@@ -562,8 +560,8 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
                 "\nName of error intermediate field or output tensor is {}".format(seal.name)
 
     # calculate output and intermediate dims
-    concrete_output_dims = list(map(list, output_dims))
-    concrete_intermediate_dims = list(map(list, intermediate_dims))
+    concrete_output_dims: List[List[int]] = list(map(list, output_dims))
+    concrete_intermediate_dims: List[List[int]] = list(map(list, intermediate_dims))
     for idx, output_dim in enumerate(output_dims):
         for i, d in enumerate(output_dim):
             if d is None:
@@ -582,9 +580,6 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
             else:  # d > 0, no d == -1
                 pass
 
-    concrete_input_dims = list(map(tuple, concrete_input_dims))
-    concrete_output_dims = list(map(tuple, concrete_output_dims))
-    concrete_intermediate_dims = list(map(tuple, concrete_intermediate_dims))
     return concrete_input_dims, concrete_intermediate_dims, concrete_output_dims, batch_num
 
 

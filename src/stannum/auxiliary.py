@@ -106,15 +106,6 @@ class DimEnum:
         else:
             return f"DimEnum.Match(dim_id = {self.dim_id})"
 
-    def is_match(self):
-        return self.id == DimEnum.MATCH_ID
-
-    def is_any(self):
-        return self.id == DimEnum.ANY_ID
-
-    def is_batch(self):
-        return self.id == DimEnum.BATCH_ID
-
 
 AnyDim = DimEnum(DimEnum.ANY_ID, None)
 BatchDim = DimEnum(DimEnum.BATCH_ID, None)
