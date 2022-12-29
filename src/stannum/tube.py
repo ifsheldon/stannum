@@ -71,8 +71,7 @@ class Tube(torch.nn.Module):
         assert isinstance(dtype, torch.dtype)
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
-        assert all(map(lambda d: isinstance(d, DimOption), dims)), \
-            f"dims must be all DimOptions, got {dims}"
+        assert all(map(is_dim_option, dims)), f"dims must be all DimOptions, got {dims}"
         assert all(map(lambda x: x > 0,
                        filter(lambda x: isinstance(x, int), dims))), \
             f"all integer dims must be positive, got {dims}"
@@ -119,8 +118,7 @@ class Tube(torch.nn.Module):
                         requires_grad=requires_grad,
                         name=name)
         elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert all(map(lambda d: isinstance(d, DimOption), dims_or_calc)), \
-                f"dims must be all DimOptions, got {dims_or_calc}"
+            assert all(map(is_dim_option, dims_or_calc)), f"dims must be all DimOptions, got {dims_or_calc}"
             assert not any(map(is_any_dim, dims_or_calc)), \
                 "Dim = Any is not allowed when registering output tensors but only registering input tensors"
             assert all(map(lambda x: x > 0,
@@ -172,8 +170,7 @@ class Tube(torch.nn.Module):
                         requires_grad=needs_grad,
                         name=name)
         elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert all(map(lambda d: isinstance(d, DimOption), dims_or_calc)), \
-                f"dims must be all DimOptions, got {dims_or_calc}"
+            assert all(map(is_dim_option, dims_or_calc)), f"dims must be all DimOptions, got {dims_or_calc}"
             assert not any(map(is_any_dim, dims_or_calc)), \
                 "Dim = Any is not allowed when registering intermediate fields but only registering input tensors"
             assert all(map(lambda x: x > 0,
@@ -458,6 +455,10 @@ class TubeKernelBundle:
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
         ti_fields = tuple(map(lambda x: x.field, concrete_fields))
         self.kernel.grad(*(ti_fields + self.extra_args))
+
+
+def is_dim_option(dim_opt: Any):
+    return isinstance(dim_opt, (int, DimEnum))  # legacy python cannot deal with isinstance(d, DimOption)
 
 
 def is_batch_dim(dim_opt: DimOption):
