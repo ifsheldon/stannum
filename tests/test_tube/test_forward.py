@@ -1,7 +1,7 @@
 import taichi as ti
 import torch
-from src.stannum.tube import Tube
 import pytest
+from src.stannum import Tube, MatchDim, AnyDim
 
 
 @ti.kernel
@@ -44,9 +44,9 @@ def test_any_dims_match():
     ti.init(ti.cpu)
     cpu = torch.device("cpu")
     tube = Tube(cpu) \
-        .register_input_tensor((-2,), torch.float32, "arr_a", False) \
-        .register_input_tensor((-2,), torch.float32, "arr_b", False) \
-        .register_output_tensor((-2,), torch.float32, "output_arr", False) \
+        .register_input_tensor((MatchDim(0),), torch.float32, "arr_a", False) \
+        .register_input_tensor((MatchDim(0),), torch.float32, "arr_b", False) \
+        .register_output_tensor((MatchDim(0),), torch.float32, "output_arr", False) \
         .register_kernel(ti_add, ["arr_a", "arr_b", "output_arr"]) \
         .finish()
     dim = 10
@@ -66,9 +66,9 @@ def test_any_dims_unregister_error():
     cpu = torch.device("cpu")
     with pytest.raises(Exception):
         tube = Tube(cpu) \
-            .register_input_tensor((-2,), torch.float32, "arr_a", False) \
-            .register_input_tensor((-2,), torch.float32, "arr_b", False) \
-            .register_output_tensor((-3,), torch.float32, "output_arr", False) \
+            .register_input_tensor((MatchDim(0),), torch.float32, "arr_a", False) \
+            .register_input_tensor((MatchDim(0),), torch.float32, "arr_b", False) \
+            .register_output_tensor((MatchDim(1),), torch.float32, "output_arr", False) \
             .register_kernel(ti_add, ["arr_a", "arr_b", "output_arr"]) \
             .finish()
 
@@ -78,9 +78,9 @@ def test_any_dims_error():
     cpu = torch.device("cpu")
     with pytest.raises(Exception):
         tube = Tube(cpu) \
-            .register_input_tensor((-1,), torch.float32, "arr_a", False) \
-            .register_input_tensor((-1,), torch.float32, "arr_b", False) \
-            .register_output_tensor((-1,), torch.float32, "output_arr", False) \
+            .register_input_tensor((AnyDim,), torch.float32, "arr_a", False) \
+            .register_input_tensor((AnyDim,), torch.float32, "arr_b", False) \
+            .register_output_tensor((AnyDim,), torch.float32, "output_arr", False) \
             .register_kernel(ti_add, ["arr_a", "arr_b", "output_arr"]) \
             .finish()
 
@@ -90,8 +90,8 @@ def test_any_dims():
     cpu = torch.device("cpu")
 
     tube = Tube(cpu) \
-        .register_input_tensor((-1,), torch.float32, "arr_a", False) \
-        .register_input_tensor((-1,), torch.float32, "arr_b", False) \
+        .register_input_tensor((AnyDim,), torch.float32, "arr_a", False) \
+        .register_input_tensor((AnyDim,), torch.float32, "arr_b", False) \
         .register_output_tensor((13,), torch.float32, "output_arr", False) \
         .register_kernel(ti_add, ["arr_a", "arr_b", "output_arr"]) \
         .finish()

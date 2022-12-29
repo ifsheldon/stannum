@@ -76,7 +76,7 @@ class Tube(torch.nn.Module):
                     field_manager=field_manager,
                     requires_grad=requires_grad,
                     name=name)
-        seal.batched = len(dims) > 0 and dims[0] is None
+        seal.batched = len(dims) > 0 and is_batch_dim(dims[0])
         self.batched = self.batched or seal.batched
         self.input_placeholders.append(seal)
         self.seals[name] = seal
@@ -125,7 +125,7 @@ class Tube(torch.nn.Module):
                         field_manager=field_manager,
                         requires_grad=requires_grad,
                         name=name)
-            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
+            seal.batched = len(dims_or_calc) > 0 and is_batch_dim(dims_or_calc[0])
         else:
             raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
 
@@ -177,7 +177,7 @@ class Tube(torch.nn.Module):
                         field_manager=field_manager,
                         requires_grad=needs_grad,
                         name=name)
-            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
+            seal.batched = len(dims_or_calc) > 0 and is_batch_dim(dims_or_calc[0])
         else:
             raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
         self.intermediate_field_placeholders.append(seal)
@@ -234,16 +234,16 @@ class Tube(torch.nn.Module):
         assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
         assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
         assert len(self.kernel_bundle_dict) > 0, "Must register at least 1 kernel"
-        # neg dim check
-        neg_dims = {-1}
+        # MatchDim check
+        match_dims = set()
         for ip in self.input_placeholders:
             for d in ip.dims:
-                if d is not None and d < 0:
-                    neg_dims.add(d)
+                if is_match_dim(d):
+                    match_dims.add(d.dim_id)
 
         for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
             for d in placeholder.dims:
-                if d is not None and d < 0 and d not in neg_dims:
+                if is_match_dim(d) and d.dim_id not in match_dims:
                     raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
         self._finished = True
         return self
@@ -378,13 +378,15 @@ class Seal:
         assert dtype is not None, "dtype must not be None"
         if shape_calc is None:  # explicit dims
             # validate dims
-            if len(dims) > 0:  # if it is not a scalar, further check
-                if dims[0] is None:
+            if len(dims) > 0:  # if it is not a scalar(dims is an empty tuple or list), further check
+                if is_batch_dim(dims[0]):
                     for i in range(1, len(dims)):
-                        assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+                        assert not is_batch_dim(dims[i]), \
+                            "Only the leading dimension can be None (i.e. the batch dimension)"
                 else:
-                    for i in range(len(dims)):
-                        assert dims[i] is not None, "Only the leading dimension can be None (i.e. the batch dimension)"
+                    for d in dims:
+                        assert not is_batch_dim(d), \
+                            "Only the leading dimension can be None (i.e. the batch dimension)"
 
             for i in dims:
                 assert i != 0, f"Dimension cannot be 0, got {dims}"
@@ -510,14 +512,15 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
             f"Dimensionality check failed, expecting the {i}th tensor to be {len(input_dim)}D, got {len(tensor_shape)}D"
         if len(input_dim) == 0:  # scalar, shape = ()
             continue
-        elif input_dim[0] is None:  # shape = (None, ...)
+        elif is_batch_dim(input_dim[0]):  # shape = (Batch, ...)
             if batch_num is None:
                 batch_num = tensor_shape[0]
             else:
                 assert tensor_shape[0] == batch_num, f"Batch num of {i}th tensor not match, " \
                                                      f"expect: {batch_num}, got {tensor_shape[0]}"
         else:
-            assert all(map(lambda x, y: y < 0 or x == y, tensor_shape, input_dim)), \
+            assert all(map(lambda shape, dim: (is_match_dim(dim) or is_any_dim(dim)) or shape == dim,
+                           tensor_shape, input_dim)), \
                 f"{i}th tensor dimensions not match, expect: {input_dim}, got {tensor_shape}"
 
     # fill in {Any, Match} dimensions and batch dimension
@@ -525,17 +528,17 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
     dim_id_to_shape: Dict[DimID, int] = {}
     for idx, input_dim in enumerate(input_dims):
         for i, d in enumerate(input_dim):
-            if d is None:
+            if is_batch_dim(d):
                 concrete_input_dims[idx][i] = batch_num
-            elif d == -1:
+            elif is_any_dim(d):
                 concrete_input_dims[idx][i] = input_tensor_shapes[idx][i]
-            elif d < -1:
-                concrete_dim = input_tensor_shapes[idx][i]
-                if d in neg_dims:
-                    assert neg_dims[d] == concrete_dim, f"Dim = {d} not match"
+            elif is_match_dim(d):
+                concrete_shape = input_tensor_shapes[idx][i]
+                if d.dim_id in dim_id_to_shape:
+                    assert dim_id_to_shape[d.dim_id] == concrete_shape, f"Dim = {d} not match"
                 else:
-                    neg_dims[d] = concrete_dim
-                concrete_input_dims[idx][i] = concrete_dim
+                    dim_id_to_shape[d.dim_id] = concrete_shape
+                concrete_input_dims[idx][i] = concrete_shape
 
     input_tensor_dimensions_dict = {}
     input_tensor_shapes_dict = {}
@@ -564,21 +567,27 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
     concrete_intermediate_dims: List[List[int]] = list(map(list, intermediate_dims))
     for idx, output_dim in enumerate(output_dims):
         for i, d in enumerate(output_dim):
-            if d is None:
+            if is_batch_dim(d):
                 concrete_output_dims[idx][i] = batch_num
-            elif d < -1:
-                concrete_output_dims[idx][i] = neg_dims[d]
-            else:  # d > 0, no d == -1
-                pass
+            elif is_match_dim(d):
+                concrete_output_dims[idx][i] = dim_id_to_shape[d.dim_id]
+            elif is_any_dim(d):
+                raise Exception("Dim = Any is not allowed when constructing output fields "
+                                "but only registering input tensors. "
+                                "If you are using a DimensionCalculator, check it. "
+                                "Otherwise, this should not happen, then file a bug report")
 
     for idx, inter_dim in enumerate(intermediate_dims):
         for i, d in enumerate(inter_dim):
-            if d is None:
+            if is_batch_dim(d):
                 concrete_intermediate_dims[idx][i] = batch_num
-            elif d < -1:
-                concrete_intermediate_dims[idx][i] = neg_dims[d]
-            else:  # d > 0, no d == -1
-                pass
+            elif is_match_dim(d):
+                concrete_intermediate_dims[idx][i] = dim_id_to_shape[d.dim_id]
+            elif is_any_dim(d):  # d > 0, no d == -1
+                raise Exception("Dim = Any is not allowed when constructing intermediate fields "
+                                "but only registering input tensors. "
+                                "If you are using a DimensionCalculator, check it. "
+                                "Otherwise, this should not happen, then file a bug report")
 
     return concrete_input_dims, concrete_intermediate_dims, concrete_output_dims, batch_num
 

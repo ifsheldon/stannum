@@ -2,6 +2,7 @@ import taichi as ti
 import torch
 from torch import allclose
 from src.stannum.tube import Tube
+from src.stannum import BatchDim
 
 
 @ti.kernel
@@ -14,9 +15,9 @@ def test_batch_backward_scalar():
     b = torch.tensor(1., requires_grad=True)
     batched_a = torch.ones(10, requires_grad=True)
     tube = Tube() \
-        .register_input_tensor((None,), torch.float32, "a") \
+        .register_input_tensor((BatchDim,), torch.float32, "a") \
         .register_input_tensor((), torch.float32, "b") \
-        .register_output_tensor((None,), torch.float32, "out", True) \
+        .register_output_tensor((BatchDim,), torch.float32, "out", True) \
         .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, b)
@@ -32,9 +33,9 @@ def test_batch_backward_scalar_eager_mode():
     b = torch.tensor(1., requires_grad=True)
     batched_a = torch.ones(10, requires_grad=True)
     tube = Tube(persistent_field=False) \
-        .register_input_tensor((None,), torch.float32, "a") \
+        .register_input_tensor((BatchDim,), torch.float32, "a") \
         .register_input_tensor((), torch.float32, "b") \
-        .register_output_tensor((None,), torch.float32, "out", True) \
+        .register_output_tensor((BatchDim,), torch.float32, "out", True) \
         .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, b)
@@ -50,9 +51,9 @@ def test_batch():
     batched_a = torch.ones(10, requires_grad=True)
     batched_b = torch.ones(10, requires_grad=True)
     tube = Tube() \
-        .register_input_tensor((None,), torch.float32, "a") \
-        .register_input_tensor((None,), torch.float32, "b") \
-        .register_output_tensor((None,), torch.float32, "out", True) \
+        .register_input_tensor((BatchDim,), torch.float32, "a") \
+        .register_input_tensor((BatchDim,), torch.float32, "b") \
+        .register_output_tensor((BatchDim,), torch.float32, "out", True) \
         .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, batched_b)
@@ -69,9 +70,9 @@ def test_batch_eager_mode():
     batched_a = torch.ones(10, requires_grad=True)
     batched_b = torch.ones(10, requires_grad=True)
     tube = Tube(persistent_field=False) \
-        .register_input_tensor((None,), torch.float32, "a") \
-        .register_input_tensor((None,), torch.float32, "b") \
-        .register_output_tensor((None,), torch.float32, "out", True) \
+        .register_input_tensor((BatchDim,), torch.float32, "a") \
+        .register_input_tensor((BatchDim,), torch.float32, "b") \
+        .register_output_tensor((BatchDim,), torch.float32, "out", True) \
         .register_kernel(int_add, ["a", "b", "out"]) \
         .finish()
     out = tube(batched_a, batched_b)
