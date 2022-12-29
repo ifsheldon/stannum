@@ -74,3 +74,59 @@ class SNode:
 
     def __del__(self):
         self.destroy()
+
+
+class DimEnum:
+    """
+    Enum with payload(i.e., dim_id)
+    """
+    ANY_ID = 0
+    BATCH_ID = 1
+    MATCH_ID = 2
+
+    def __init__(self, id: int, dim_id: Union[str, int, None] = None):
+        self.id = id
+        self.dim_id = dim_id
+
+    def __eq__(self, other):
+        if not isinstance(other, DimEnum):
+            return False
+        if self.id != other.id:
+            return False
+        else:
+            if self.id == DimEnum.MATCH_ID:
+                return self.dim_id == other.dim_id
+            else:
+                return True
+
+    def __hash__(self):
+        if self.id != DimEnum.MATCH_ID:
+            return hash(self.id)
+        else:
+            return hash((self.id, self.dim_id))
+
+    def __str__(self):
+        if self.id == DimEnum.ANY_ID:
+            return "DimEnum.Any"
+        elif self.id == DimEnum.BATCH_ID:
+            return "DimEnum.Batch"
+        else:
+            return f"DimEnum.Match(dim_id = {self.dim_id})"
+
+    def is_match(self):
+        return self.id == DimEnum.MATCH_ID
+
+    def is_any(self):
+        return self.id == DimEnum.ANY_ID
+
+    def is_batch(self):
+        return self.id == DimEnum.BATCH_ID
+
+
+Any = DimEnum(DimEnum.ANY_ID, None)
+Batch = DimEnum(DimEnum.BATCH_ID, None)
+
+
+def Match(dim_id: Union[str, int]):
+    assert isinstance(dim_id, (str, int)), f"Unsupported dim_id type of {type(dim_id)}"
+    return DimEnum(DimEnum.MATCH_ID, dim_id)
