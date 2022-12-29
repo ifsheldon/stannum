@@ -129,10 +129,13 @@ DimOption = int | DimEnum
 
 
 class DimensionCalculator(ABC):
+    """
+    An interface for implementing a calculator that hints Tube how to construct fields
+    """
 
     @abstractmethod
     def calc_dimension(self,
                        field_name: str,
                        input_dimensions: Dict[str, Tuple[DimOption, ...]],
-                       input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
+                       input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[DimOption, ...]:
         pass
