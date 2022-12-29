@@ -81,7 +81,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="tin.html"><strong aria-hidden="true">2.</strong> Tin</a></li><li class="chapter-item expanded "><a href="tube.html"><strong aria-hidden="true">3.</strong> Tube</a></li><li class="chapter-item expanded "><a href="complex_numbers.html"><strong aria-hidden="true">4.</strong> Complex Numbers</a></li><li class="chapter-item expanded "><a href="contribution.html"><strong aria-hidden="true">5.</strong> Contribution</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="tin.html"><strong aria-hidden="true">2.</strong> Tin</a></li><li class="chapter-item expanded "><a href="tube/basics.html"><strong aria-hidden="true">3.</strong> Tube</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="tube/advanced_field_construction.html"><strong aria-hidden="true">3.1.</strong> Advanced Field Construction</a></li><li class="chapter-item expanded "><a href="tube/dynamic_dimensions.html"><strong aria-hidden="true">3.2.</strong> Dynamic Dimensions</a></li></ol></li><li class="chapter-item expanded "><a href="complex_numbers.html"><strong aria-hidden="true">4.</strong> Complex Numbers</a></li><li class="chapter-item expanded "><a href="contribution.html"><strong aria-hidden="true">5.</strong> Contribution</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -383,6 +383,7 @@ def some_kernel(adder: float):
 <li>create necessary fields</li>
 <li>manage fields</li>
 <li>(optionally) do automatic batching</li>
+<li>(optionally) create fields and tensors of which shapes are dynamically calculated. For example, the case in convolution.</li>
 </ul>
 <p>So, <code>Tube</code> is more flexible and convenient, but it also introduces some overhead.</p>
 <h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
@@ -392,9 +393,15 @@ def some_kernel(adder: float):
 <li>At least one kernel that takes the following as arguments
 <ul>
 <li>Taichi fields: correspond to tensors (may or may not require gradients)</li>
-<li>(Optional) Extra arguments: will NOT receive gradients</li>
+<li>(Optional) Extra arguments: will NOT receive gradients
+<ul>
+<li>see below <a href="tube/basics.html#Set-Kernel-Extra-Arguments">Set Kernel Arguments</a></li>
 </ul>
 </li>
+</ul>
+</li>
+<li>(Optional) Tweak field creation, providing a <code>FieldManager</code>, see <a href="tube/advanced_field_construction.html">Advanced Field Construction</a></li>
+<li>(Optional) Dynamically calculate the shape of fields and tensors, providing a <code>DimensionCalculator</code>, see <a href="tube/dynamic_dimensions.html">Dynamic Dimension Calculation</a></li>
 </ul>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <p>Registration order: Input tensors/intermediate fields/output tensors must be registered first, and then kernel.</p>
@@ -421,18 +428,13 @@ out = tube(a, b)
 </code></pre>
 <p>Acceptable dimensions of tensors to be registered are:</p>
 <ul>
-<li><code>None</code>: means the flexible batch dimension, must be the first dimension e.g. <code>(None, 2, 3, 4)</code></li>
+<li><code>stannum.BatchDim</code>: means the flexible batch dimension, must be the first dimension e.g. <code>(BatchDim, 2, 3, 4)</code></li>
 <li>Positive integers: fixed dimensions with the indicated dimensionality</li>
-<li>Negative integers:
+<li><code>stannum.AnyDim</code>: means any number <code>[1, +inf)</code>, <strong>only usable</strong> in the registration of input tensors.</li>
+<li><code>stannum.MatchDim(dim_id: str | int)</code>: means some dimensions with the same <code>dim_id</code> must be of the same dimensionality
 <ul>
-<li><code>-1</code>: means any number <code>[1, +inf)</code>, only usable in the registration of input tensors.</li>
-<li>Negative integers &lt; -1: indices of some dimensions that must be of the same dimensionality
-<ul>
-<li>Restriction: negative indices must be &quot;declared&quot; in the registration of input tensors first, then used in the registration of intermediate and output tensors. </li>
-<li>Example 1: tensor <code>a</code> and <code>b</code> of shapes <code>a: (2, -2, 3)</code> and <code>b: (-2, 5, 6)</code> mean the dimensions of <code>-2</code> must match.</li>
-<li>Example 2: tensor <code>a</code> and <code>b</code> of shapes <code>a: (-1, 2, 3)</code> and <code>b: (-1, 5, 6)</code> mean no restrictions on the first dimensions.</li>
-</ul>
-</li>
+<li>Restriction: <code>MatchDim</code> must be &quot;declared&quot; in the registration of input tensors first, then used in the registration of intermediate and output tensors. </li>
+<li>Example: tensor <code>a</code> and <code>b</code> of shapes <code>a: (2, MatchDim(&quot;some_dim&quot;), 3)</code> and <code>b: (MatchDim(&quot;some_dim&quot;), 5, 6)</code> mean the dimensions of <code>some_dim</code> must match, that is, the second dimension of <code>a</code> must match the first dimension of <code>b</code>.</li>
 </ul>
 </li>
 </ul>
@@ -458,15 +460,15 @@ tube = Tube(cpu) \
     .finish()
 out = tube(a, b)
 </code></pre>
-<p>With negative dimension index:</p>
+<p>With dimension matching:</p>
 <pre><code class="language-python">ti.init(ti.cpu)
 cpu = torch.device(&quot;cpu&quot;)
 tube = Tube(cpu) \
-    .register_input_tensor((-2,), torch.float32, &quot;arr_a&quot;, False) \
-    .register_input_tensor((-2,), torch.float32, &quot;arr_b&quot;, False) \
-    .register_output_tensor((-2,), torch.float32, &quot;output_arr&quot;, False) \
-    .register_kernel(ti_add, [&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]) \
-    .finish()
+.register_input_tensor((MatchDim(0),), torch.float32, &quot;arr_a&quot;, False) \
+.register_input_tensor((MatchDim(0),), torch.float32, &quot;arr_b&quot;, False) \
+.register_output_tensor((MatchDim(0),), torch.float32, &quot;output_arr&quot;, False) \
+.register_kernel(ti_add, [&quot;arr_a&quot;, &quot;arr_b&quot;, &quot;output_arr&quot;]) \
+.finish()
 dim = 10
 a = torch.ones(dim)
 b = torch.ones(dim)
@@ -477,6 +479,7 @@ a = torch.ones(dim)
 b = torch.ones(dim)
 out = tube(a, b)
 assert torch.allclose(out, torch.full((dim,), 2.))
+
 </code></pre>
 <p>With batch dimension:</p>
 <pre><code class="language-python">@ti.kernel
@@ -487,19 +490,19 @@ ti.init(ti.cpu)
 b = torch.tensor(1., requires_grad=True)
 batched_a = torch.ones(10, requires_grad=True)
 tube = Tube() \
-    .register_input_tensor((None,), torch.float32, &quot;a&quot;) \
-    .register_input_tensor((), torch.float32, &quot;b&quot;) \
-    .register_output_tensor((None,), torch.float32, &quot;out&quot;, True) \
-    .register_kernel(int_add, [&quot;a&quot;, &quot;b&quot;, &quot;out&quot;]) \
-    .finish()
+.register_input_tensor((BatchDim,), torch.float32, &quot;a&quot;) \
+.register_input_tensor((), torch.float32, &quot;b&quot;) \
+.register_output_tensor((BatchDim,), torch.float32, &quot;out&quot;, True) \
+.register_kernel(int_add, [&quot;a&quot;, &quot;b&quot;, &quot;out&quot;]) \
+.finish()
 out = tube(batched_a, b)
 loss = out.sum()
 loss.backward()
-assert torch.allclose(torch.ones_like(batched_a) + 1, out)
+assert allclose(torch.ones_like(batched_a) + 1, out)
 assert b.grad == 10.
-assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
+assert allclose(torch.ones_like(batched_a), batched_a.grad)
 </code></pre>
-<p>For more valid and invalid use examples, please see <a href="../../tests/test_tube">test files</a> in the test folder.</p>
+<p>For more valid and invalid use examples, please see <a href="tube/../../../tests/test_tube">test files</a> in the test folder.</p>
 <h2 id="apis-1"><a class="header" href="#apis-1">APIs</a></h2>
 <h3 id="constructor"><a class="header" href="#constructor">Constructor</a></h3>
 <pre><code class="language-python">def __init__(self,
@@ -521,13 +524,14 @@ assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
 <h3 id="registrations-1"><a class="header" href="#registrations-1">Registrations</a></h3>
 <p>Register input tensor shapes:</p>
 <pre><code class="language-python">def register_input_tensor(self,
-                          dims: Iterable[Union[int, None]],
+                          dims: Tuple[DimOption] | List[DimOption],
                           dtype: torch.dtype,
                           name: str,
                           requires_grad: Optional[bool] = None,
                           field_manager: Optional[FieldManager] = None):
     &quot;&quot;&quot;
         Register an input tensor
+
         @param dims: dims can contain `None`, positive and negative numbers,
         for restrictions and requirements, see README
         @param dtype: torch data type
@@ -535,10 +539,11 @@ assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
         @param requires_grad: optional, if it's None, it will be determined by input tensor
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         &quot;&quot;&quot;
+
 </code></pre>
 <p>Register intermediate field shapes:</p>
 <pre><code class="language-python">def register_intermediate_field(self,
-                                dims: Iterable[Union[int, None]],
+                                dims_or_calc: Tuple[DimOption] | List[DimOption] | Callable | DimensionCalculator,
                                 ti_dtype: TiDataType,
                                 name: str,
                                 needs_grad: bool,
@@ -547,27 +552,36 @@ assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
         Register an intermediate field,
         which can be useful if multiple kernels are used and intermediate results between kernels are stored
 
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
         @param ti_dtype: taichi data type
         @param name: name of the field
         @param needs_grad: if the field needs gradients.
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         &quot;&quot;&quot;
 </code></pre>
 <p>Register output tensor shapes:</p>
 <pre><code class="language-python">def register_output_tensor(self,
-                           dims: Iterable[Union[int, None]],
+                           dims_or_calc: Tuple[DimOption] | List[DimOption] | Callable | DimensionCalculator,
                            dtype: torch.dtype,
                            name: str,
                            requires_grad: bool,
                            field_manager: Optional[FieldManager] = None):
     &quot;&quot;&quot;
         Register an output tensor
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
+
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
         @param dtype: torch data type
         @param name: name of the tensor and corresponding field
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
         @param requires_grad: if the output requires gradients
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         &quot;&quot;&quot;
@@ -585,7 +599,7 @@ assert torch.allclose(torch.ones_like(batched_a), batched_a.grad)
 </code></pre>
 <h3 id="set-kernel-extra-arguments"><a class="header" href="#set-kernel-extra-arguments">Set Kernel Extra Arguments</a></h3>
 <p>Kernels may need extra arguments that do not need gradients, then you can set extra arguments with <code>Tube.set_kernel_extra_args()</code> or set extra arguments in <code>Tube.register_kernel()</code></p>
-<pre><code class="language-python">def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
+<pre><code class="language-python">def set_kernel_extra_args(self, kernel: Callable | str, *extra_args: Any):
     &quot;&quot;&quot;
         Set args for a kernel
         @param kernel: kernel function or its name
@@ -598,7 +612,7 @@ def mul(arr: ti.template(), out: ti.template(), multiplier: float):
     for i in arr:
         out[i] = arr[i] * multiplier
 </code></pre>
-<h2 id="advanced-field-construction"><a class="header" href="#advanced-field-construction">Advanced Field Construction</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="advanced-field-construction"><a class="header" href="#advanced-field-construction">Advanced Field Construction</a></h1>
 <p>With <code>FieldManager</code>, you can tweak how fields are constructed in order to gain performance improvement in kernel calculations.</p>
 <p>By supplying a customized <code>FieldManager</code> when registering a field, you can construct a field however you want.</p>
 <p><strong>WARNING:</strong></p>
@@ -606,8 +620,8 @@ def mul(arr: ti.template(), out: ti.template(), multiplier: float):
 <li>If you don't know why constructing fields differently can improve performance, don't use this feature.</li>
 <li>If you don't know how to construct fields differently, please refer to <a href="https://docs.taichi.graphics/lang/articles/advanced/layout">Taichi field documentation</a>.</li>
 </ul>
-<h3 id="example"><a class="header" href="#example">Example</a></h3>
-<p>In <a href="../../src/stannum/auxiliary.py"><code>auxiliary.py</code></a>, <code>FieldManager</code> is defined as an abstract class as</p>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<p>In <a href="tube/../../../src/stannum/auxiliary.py"><code>auxiliary.py</code></a>, <code>FieldManager</code> is defined as an abstract class as</p>
 <pre><code class="language-python">class FieldManager(ABC):
     &quot;&quot;&quot;
     FieldManagers enable potential flexible field constructions and manipulations.
@@ -641,7 +655,7 @@ def mul(arr: ti.template(), out: ti.template(), multiplier: float):
     def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
         pass
 </code></pre>
-<p>One example is the <code>DefaultFieldManger</code> in <a href="../../src/stannum/tube.py"><code>tube.py</code></a> defined as:</p>
+<p>One example is the <code>DefaultFieldManger</code> in <a href="tube/../../../src/stannum/tube.py"><code>tube.py</code></a> defined as:</p>
 <pre><code class="language-python">class DefaultFieldManager(FieldManager):
     &quot;&quot;&quot;
     Default field manager which layouts data in tensors by constructing fields
@@ -696,6 +710,47 @@ def mul(arr: ti.template(), out: ti.template(), multiplier: float):
             tensor = torch.view_as_real(tensor)
         grad_field.from_torch(tensor)
 </code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="dynamic-dimension-calculation"><a class="header" href="#dynamic-dimension-calculation">Dynamic Dimension Calculation</a></h1>
+<p>We first see what “dimension” means in the context of <code>stannum</code> and then see how we can leverage <code>DimensionCalculator</code> to enable dynamic dimension calculation</p>
+<h2 id="dimension--shape"><a class="header" href="#dimension--shape">Dimension != Shape</a></h2>
+<p>In <code>stannum</code>, “dimension” is virtual while “shape” is concrete. In other words, dimensions can be either integers or values of the enum <code>DimEnum</code> (namely <code>AnyDim</code>, <code>BatchDim</code> and <code>MatchDim(dim_id)</code>) while shapes can only mean integers.</p>
+<p>After one dimension is concretized, a shape is produced. For example, dimensions <code>(AnyDim, 10)</code> contain both an integer and a <code>DimEnum</code>. To concretized the dimensions, we need a matching tensor, say a tensor of shapes <code>(123, 10)</code>, then the dimensions are concretized as <code>(123, 10)</code> as <code>AngDim</code> matches <code>123</code>. The same goes with dimensions that contains <code>BatchDim</code> and <code>MatchDim(dim_id)</code> besides some unification that is more complicated.</p>
+<blockquote>
+<p>Sidenote for developers: </p>
+<p>In <a href="tube/../../../src/stannum/tube.py">tube.py</a>, concretize_dimensions_and_unify() does exactly such concretization and unification!</p>
+</blockquote>
+<p>Of course, in this context, dimensions can be also shapes, which makes dimensions a superset of shapes, which makes dimensions more powerful.</p>
+<h2 id="dimensioncalculator"><a class="header" href="#dimensioncalculator"><code>DimensionCalculator</code></a></h2>
+<p>To calculate dimensions dynamically, we provide an API, which is <code>DimensionCalculator</code>, an abstract class containing only one method. So, alternatively, you can provide a closure as duck  <code>DimensionCalculator</code> implementation.</p>
+<blockquote>
+<p>Wait, why do we need dimensions/shapes in the first place?</p>
+<p><code>Tube</code> help you manage fields automatically. By “manage”, it automatically create and destroy fields. In field creation, it needs (concrete) shapes instead of (virtual) dimensions. At the mean time, we need some way to express batching dimension, matching dimension and don’t-care (any) dimension, so we have dimensions.</p>
+</blockquote>
+<p>The specification of <code>DimensionCalculator</code> is as simple as below:</p>
+<pre><code class="language-python">class DimensionCalculator(ABC):
+    &quot;&quot;&quot;
+    An interface for implementing a calculator that hints Tube how to construct fields
+    &quot;&quot;&quot;
+
+    @abstractmethod
+    def calc_dimension(self,
+                       field_name: str,
+                       input_dimensions: Dict[str, Tuple[DimOption, ...]],
+                       input_tensor_shapes: Dict[str, Tuple[int, ...]]) -&gt; Tuple[DimOption, ...]:
+        &quot;&quot;&quot;
+        Calculate dimensions for a output/intermediate field
+
+        @param field_name: the name of the field for which the dimensions are calculated
+        @param input_dimensions: the dict mapping names of input fields to input fields
+        @param input_tensor_shapes: the dict mapping names of input fields to
+        shapes of input tensors that correspond to input fields
+        &quot;&quot;&quot;
+        pass
+</code></pre>
+<p><code>field_name</code> is the name of an intermediate/output field for which dimensions are calculated. <code>input_dimensions</code> gives you all the information of dimensions of all input fields. <code>input_tensor_shapes</code> gives you all the information of shapes of input tensors, of which names are the names of input fields.</p>
+<h2 id="example-convolution"><a class="header" href="#example-convolution">Example: Convolution</a></h2>
+<p>In the case of convolution, the shapes and dimensions of a convolution kernel and an input (say an image) are needed to compute the shapes of output.</p>
+<p>In <a href="tube/../../../tests/test_tube/test_dynamic_shape.py">test_dynamic_shape.py</a>, there is a simple <code>DimensionCalculator</code> for 1D convolution, namely <code>D1ConvDC</code>. And you can see how to use it in the test cases.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="complex-number-support"><a class="header" href="#complex-number-support">Complex Number Support</a></h1>
 <p>When registering input fields and output fields, you can pass <code>complex_dtype=True</code> to enable simple complex tensor input and output support. For instance, <code>Tin(..).register_input_field(input_field, complex_dtype=True)</code>.</p>
 <p>Now the complex tensor support is limited in that the representation of complex numbers is a barebone 2D vector, since Taichi has no official support on complex numbers yet.</p>
