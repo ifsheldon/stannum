@@ -504,10 +504,10 @@ def select_concrete_field(seals: List[Seal],
     return selected_concrete_fields
 
 
-def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
-                                input_placeholders: List[Seal],
-                                intermediate_fields: List[Seal],
-                                output_placeholders: List[Seal]) \
+def concretize_dimensions_and_unify(input_tensor_shapes: List[Tuple[int, ...]],
+                                    input_placeholders: List[Seal],
+                                    intermediate_fields: List[Seal],
+                                    output_placeholders: List[Seal]) \
         -> Tuple[List[List[int]], List[List[int]], List[List[int]], int | None]:
     """
     Try to find out concrete numbers in dimension placeholders (like AnyDim, MatchDim, BatchDim)
@@ -625,7 +625,7 @@ class EagerTubeFunc(torch.autograd.Function):
                 assert t.device == device, f"Tensors not on the device {device}"
 
         input_tensor_shapes = [x.shape for x in input_tensors]
-        concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes, batch_num = unify_and_concretize_shapes(
+        concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes, batch_num = concretize_dimensions_and_unify(
             input_tensor_shapes,
             input_seals, intermediate_seals, output_seals)
 
@@ -955,7 +955,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                 assert t.device == device, f"Tensors not on the device {device}"
 
         input_tensor_shapes = [x.shape for x in input_tensors]
-        concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes, batch_num = unify_and_concretize_shapes(
+        concrete_input_shapes, concrete_intermediate_shapes, concrete_output_shapes, batch_num = concretize_dimensions_and_unify(
             input_tensor_shapes,
             input_seals, intermediate_seals, output_seals)
         fb = ti.FieldsBuilder()
