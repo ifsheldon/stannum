@@ -1,6 +1,6 @@
 import torch
 from .utils import check_field_needs_grad, autofill_kernel_name_available, is_kernel, need_auto_clearing_fields
-from typing import Optional, List, Dict, Callable, Tuple, Any
+from typing import Optional, List, Dict, Union, Callable, Tuple, Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
 from warnings import warn
@@ -32,7 +32,7 @@ class EmptyTin(torch.nn.Module):
         self.kernel_bundle_dict: Dict[str, TaichiKernelBundle] = {}
         self.finished: bool = False
 
-    def register_input_field(self, field: ScalarField | MatrixField,
+    def register_input_field(self, field: Union[ScalarField, MatrixField],
                              name: Optional[str] = None,
                              needs_grad: Optional[bool] = None,
                              complex_dtype: bool = False):
@@ -51,7 +51,7 @@ class EmptyTin(torch.nn.Module):
         self.input_fields.append(TaichiField(field, needs_grad, field_name, complex_dtype))
         return self
 
-    def register_output_field(self, field: ScalarField | MatrixField,
+    def register_output_field(self, field: Union[ScalarField, MatrixField],
                               name: Optional[str] = None,
                               needs_grad: Optional[bool] = None,
                               complex_dtype: bool = False):
@@ -70,7 +70,7 @@ class EmptyTin(torch.nn.Module):
         self.output_fields.append(TaichiField(field, needs_grad, field_name, complex_dtype))
         return self
 
-    def register_internal_field(self, field: ScalarField | MatrixField,
+    def register_internal_field(self, field: Union[ScalarField, MatrixField],
                                 needs_grad: Optional[bool] = None,
                                 name: Optional[str] = None,
                                 value: Optional[torch.Tensor] = None,
@@ -121,7 +121,7 @@ class EmptyTin(torch.nn.Module):
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
-    def set_internal_field(self, field_name: str | int, tensor: torch.Tensor):
+    def set_internal_field(self, field_name: Union[str, int], tensor: torch.Tensor):
         """
         Sets the value of an internal field from a tensor
 
@@ -135,7 +135,7 @@ class EmptyTin(torch.nn.Module):
         assert field_name in self.internal_fields, f"field with the name {field_name} not registered"
         self.internal_fields[field_name].from_torch(tensor)
 
-    def set_kernel_args(self, kernel: Callable | str, *kernel_args: Any):
+    def set_kernel_args(self, kernel: Union[Callable, str], *kernel_args: Any):
         """
         Set args for a kernel
         @param kernel: kernel function or its name
@@ -193,7 +193,7 @@ class Tin(EmptyTin):
             raise Exception("Requires a Taichi data-oriented instance")
         self.data_oriented = data_oriented
 
-    def register_kernel(self, kernel: Callable | str, *kernel_args: Any, kernel_name: Optional[str] = None):
+    def register_kernel(self, kernel: Union[Callable, str], *kernel_args: Any, kernel_name: Optional[str] = None):
         """
         Register a kernel for forward calculation
         @param kernel: kernel function or kernel name
@@ -227,7 +227,7 @@ class TaichiKernelBundle:
 class TaichiField:
     """An extensive wrapper around Taichi field"""
 
-    def __init__(self, field: ScalarField | MatrixField,
+    def __init__(self, field: Union[ScalarField, MatrixField],
                  needs_grad: bool,
                  name: str,
                  complex_dtype: bool = False):
@@ -251,8 +251,8 @@ class TaichiField:
                     self.acceptable_tensor_shape = tuple(field.shape) + (field.n, field.m)
         else:
             raise Exception(f"Field {name}: Only accept ti ScalarField or MatrixField, got {type(field)}")
-        self.field: ScalarField | MatrixField = field
-        self.grad: ScalarField | MatrixField = field.grad
+        self.field: Union[ScalarField, MatrixField] = field
+        self.grad: Union[ScalarField, MatrixField] = field.grad
         self.needs_grad: bool = needs_grad
         # TODO: wait for upstream support on complex numbers
         self.complex_dtype: Optional[bool] = complex_dtype
