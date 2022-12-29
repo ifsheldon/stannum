@@ -22,12 +22,30 @@ Make sure you have the following installed:
 
 * PyTorch
 * **latest** Taichi
-    * For performance concerns, we strongly recommend to use Taichi>=0.9.1
-    * If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.
+    * For performance concerns, we strongly recommend to use Taichi >= 1.1.3 (see Issue #9 for more information)
 
 ## Differentiability
 
 Stannum does **NOT** check the differentiability of your kernels, so you may not get correct gradients if your kernel is not differentiable. Please refer to [Differentiable Programming of Taichi](https://docs.taichi-lang.org/docs/differentiable_programming) for more information.
+
+## `Tin` or `Tube`?
+
+`stannum` mainly has two high-level APIs, `Tin` and `Tube`. `Tin` aims to be the thinnest bridge layer with the least overhead while `Tube` has more functionalities and convenience with some more overhead.
+
+See the comparison below:
+
+|                                 |         `Tin`/`EmptyTin`         |                      `Tube`                       |
+| :-----------------------------: | :------------------------------: | :-----------------------------------------------: |
+|          Overhead[^1] [^2]           |               Low❤️               | A bit more overhead due to auto memory management |
+|        Field Management         | Users must manage Taichi fields⚠️ |                 Auto management♻️                  |
+|      Forward Pass Bridging      |                ✅                 |                         ✅                         |
+| Backward Pass Gradient Bridging |                ✅                 |                         ✅                         |
+|            Batching             |                ❌                 |                         ✅                         |
+|     Variable Tensor Shapes      |                ❌                 |                         ✅                         |
+
+[^1]: (Performance Tip) A lot of assertions in `stannum` make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass `-O` to Python as suggested in [the Python doc about assertions](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement).
+
+[^2]: See Issue #9 for more information about the performance if you want to use `Tube` with legacy Taichi < `1.1.3`.
 
 ## Bugs & Issues
 

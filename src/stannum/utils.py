@@ -1,12 +1,12 @@
 import sys
 from typing import Union, Callable
 
-from taichi import __version__ as __ti_version
+from taichi import __version__ as ti_version
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.matrix import MatrixField
 from taichi.lang.field import ScalarField
 
-if __ti_version >= (1, 1, 0):
+if ti_version >= (1, 1, 0):
     from taichi._lib.core.taichi_python import DataType as TiDataType
 else:
     from taichi._lib.core.taichi_core import DataType as TiDataType
@@ -14,7 +14,7 @@ import torch
 import taichi as ti
 
 # Before Taichi 0.9.1, memory of fields is not initialized after creation, causing some undefined behaviors; fixed in 0.9.1
-need_auto_clearing_fields = __ti_version < (0, 9, 1)
+need_auto_clearing_fields = ti_version < (0, 9, 1)
 
 
 def to_taichi_type(dt):
@@ -61,11 +61,11 @@ def check_field_needs_grad(field: Union[MatrixField, ScalarField], needs_grad: U
     :param needs_grad: boolean or None
     :return: boolean, whether a field needs gradients
     """
-    is_legacy_taichi = __ti_version < (0, 7, 26)
+    is_legacy_taichi = ti_version < (0, 7, 26)
     if needs_grad is None:
         if is_legacy_taichi:
             raise Exception(
-                f"You are using legacy Taichi (v{__ti_version[0]}.{__ti_version[1]}.{__ti_version[2]} < v0.7.26), "
+                f"You are using legacy Taichi (v{ti_version[0]}.{ti_version[1]}.{ti_version[2]} < v0.7.26), "
                 f"you need to specify needs_grad yourself when registering a field")
         else:
             snode_ptr = field.snode.ptr
@@ -86,7 +86,7 @@ def autofill_kernel_name_available(kernel: Callable):
     @param kernel: a @ti.kernel function/method
     @return: if support autofill kernel name
     """
-    is_legacy_taichi = __ti_version <= (0, 7, 26)
+    is_legacy_taichi = ti_version <= (0, 7, 26)
     return not is_legacy_taichi or hasattr(kernel, "__name__")
 
 

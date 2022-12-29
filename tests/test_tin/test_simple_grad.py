@@ -22,7 +22,7 @@ def test_grad_with_data_oriented_class():
     ti.init(ti.cpu, default_fp=ti.f32)
     data_oriented = Multiplier(2.0)
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented, device=device) \
+    tin_layer = Tin(data_oriented, device, True) \
         .register_kernel(data_oriented.forward_kernel, 1.0, kernel_name="forward") \
         .register_input_field(data_oriented.input_field) \
         .register_output_field(data_oriented.output_field) \
@@ -59,7 +59,7 @@ def test_grad_with_some_nongrad_field():
     ti.init(ti.cpu)
     data_oriented = TiAdder()
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented, device) \
+    tin_layer = Tin(data_oriented, device, True) \
         .register_kernel(data_oriented.add) \
         .register_input_field(data_oriented.arr0) \
         .register_input_field(data_oriented.arr1) \

@@ -8,7 +8,6 @@
 
         <!-- Custom HTML head -->
         
-        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
@@ -34,13 +33,13 @@
     </head>
     <body>
         <!-- Provide site root to javascript -->
-        <script type="text/javascript">
+        <script>
             var path_to_root = "";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
-        <script type="text/javascript">
+        <script>
             try {
                 var theme = localStorage.getItem('mdbook-theme');
                 var sidebar = localStorage.getItem('mdbook-sidebar');
@@ -56,7 +55,7 @@
         </script>
 
         <!-- Set the theme before any content is loaded, prevents flash -->
-        <script type="text/javascript">
+        <script>
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
@@ -68,7 +67,7 @@
         </script>
 
         <!-- Hide / unhide sidebar before it is displayed -->
-        <script type="text/javascript">
+        <script>
             var html = document.querySelector('html');
             var sidebar = 'hidden';
             if (document.body.clientWidth >= 1080) {
@@ -99,7 +98,7 @@
                             <i class="fa fa-paint-brush"></i>
                         </button>
                         <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
@@ -132,7 +131,7 @@
                 </div>
 
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
-                <script type="text/javascript">
+                <script>
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
                     document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
                     Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
@@ -158,13 +157,30 @@
 <li>PyTorch</li>
 <li><strong>latest</strong> Taichi
 <ul>
-<li>For performance concerns, we strongly recommend to use Taichi&gt;=0.9.1</li>
-<li>If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers.</li>
+<li>For performance concerns, we strongly recommend to use Taichi &gt;= 1.1.3 (see Issue #9 for more information)</li>
 </ul>
 </li>
 </ul>
 <h2 id="differentiability"><a class="header" href="#differentiability">Differentiability</a></h2>
 <p>Stannum does <strong>NOT</strong> check the differentiability of your kernels, so you may not get correct gradients if your kernel is not differentiable. Please refer to <a href="https://docs.taichi-lang.org/docs/differentiable_programming">Differentiable Programming of Taichi</a> for more information.</p>
+<h2 id="tin-or-tube"><a class="header" href="#tin-or-tube"><code>Tin</code> or <code>Tube</code>?</a></h2>
+<p><code>stannum</code> mainly has two high-level APIs, <code>Tin</code> and <code>Tube</code>. <code>Tin</code> aims to be the thinnest bridge layer with the least overhead while <code>Tube</code> has more functionalities and convenience with some more overhead.</p>
+<p>See the comparison below:</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: center"></th><th style="text-align: center"><code>Tin</code>/<code>EmptyTin</code></th><th style="text-align: center"><code>Tube</code></th></tr></thead><tbody>
+<tr><td style="text-align: center">Overhead<sup class="footnote-reference"><a href="#1">1</a></sup> <sup class="footnote-reference"><a href="#2">2</a></sup></td><td style="text-align: center">Low❤️</td><td style="text-align: center">A bit more overhead due to auto memory management</td></tr>
+<tr><td style="text-align: center">Field Management</td><td style="text-align: center">Users must manage Taichi fields⚠️</td><td style="text-align: center">Auto management♻️</td></tr>
+<tr><td style="text-align: center">Forward Pass Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Backward Pass Gradient Bridging</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Batching</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
+<tr><td style="text-align: center">Variable Tensor Shapes</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td></tr>
+</tbody></table>
+</div>
+<div class="footnote-definition" id="1"><sup class="footnote-definition-label">1</sup>
+<p>(Performance Tip) A lot of assertions in <code>stannum</code> make sure you do the right thing or get a right error when you do it wrong, which is helpful in debugging but incurs a bit overhead. To get rid of assertion overhead, pass <code>-O</code> to Python as suggested in <a href="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement">the Python doc about assertions</a>.</p>
+</div>
+<div class="footnote-definition" id="2"><sup class="footnote-definition-label">2</sup>
+<p>See Issue #9 for more information about the performance if you want to use <code>Tube</code> with legacy Taichi &lt; <code>1.1.3</code>.</p>
+</div>
 <h2 id="bugs--issues"><a class="header" href="#bugs--issues">Bugs &amp; Issues</a></h2>
 <p>Please feel free to file issues on <a href="https://github.com/ifsheldon/stannum">Github</a>. If a runtime error occurs from the dependencies of <code>stannum</code>, you may also want to check the <a href="https://github.com/ifsheldon/stannum/issues/11">upstream breaking change tracker</a>.</p>
 
@@ -194,18 +210,18 @@
 
 
 
-        <script type="text/javascript">
+        <script>
             window.playground_copyable = true;
         </script>
 
 
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
 
-        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
-        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
 

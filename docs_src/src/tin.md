@@ -17,7 +17,7 @@ import torch
 data_oriented = TiClass()  # some Taichi data-oriented class 
 device = torch.device("cpu")
 kernel_args = (1.0,)
-tin_layer = Tin(data_oriented, device=device)
+tin_layer = Tin(data_oriented, device=device, auto_clear_grad=True)
 .register_kernel(data_oriented.forward_kernel, *kernel_args, kernel_name="forward")  # on old Taichi
 # .register_kernel(data_oriented.forward_kernel, *kernel_args)  # on new Taichi
 .register_input_field(data_oriented.input_field)
@@ -49,7 +49,7 @@ def some_kernel(bias: float):
 
 device = torch.device("cpu")
 kernel_args = (1.0,)
-tin_layer = EmptyTin(device)\
+tin_layer = EmptyTin(device, True)\
     .register_kernel(some_kernel, *kernel_args)\
     .register_input_field(input_field)\
     .register_output_field(output_field)\
@@ -77,28 +77,37 @@ Be warned that it is **YOUR** responsibility to create and manage fields and if 
 `Tin`:
 
 ```python
-def __init__(self, data_oriented: Any, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+def __init__(self,
+             data_oriented: Any,
+             device: torch.device,
+             auto_clear_grad: bool,
+             _auto_clear: bool = need_auto_clearing_fields):
     """
-        Init a Tin instance
-        @param data_oriented: @ti.data_oriented class instance
-        @param device: torch.device instance
-        @param auto_clear: clear fields before use
-        """
+    Init a Tin instance
+    @param data_oriented: @ti.data_oriented class instance
+    @param device: torch.device instance
+    @param auto_clear_grad: auto clear gradients in fields before backward computation
+    @param _auto_clear: clear fields before use
+    """
 ```
 
 `EmptyTin`:
 
 ```python
-def __init__(self, device: torch.device, auto_clear: bool = need_auto_clearing_fields):
+def __init__(self,
+             device: torch.device,
+             auto_clear_grad: bool,
+             _auto_clear: bool = need_auto_clearing_fields):
     """
-        Init an EmptyTin instance
+    Init an EmptyTin instance
 
-        @param device: torch.device instance
-        @param auto_clear: clear fields before use
-        """
+    @param device: torch.device instance
+    @param auto_clear_grad: auto clear gradients in fields before backward computation
+    @param _auto_clear: clear fields before use, for legacy Taichi
+    """
 ```
 
-If `auto_clear` is `True`, then all the registered fields will be cleared before running the kernel(s), which prevents some undefined behaviors due to un-initialized memory of fields before Taichi `0.9.1`. After Taichi `0.9.1`, the memory of fields is automatically cleared after creation, so `auto_clear` is not necessary anymore. But it is still configurable if desired.
+If `_auto_clear` is `True`, then all the registered fields will be cleared before running the kernel(s), which prevents some undefined behaviors due to un-initialized memory of fields before Taichi `0.9.1`. After Taichi `0.9.1`, the memory of fields is automatically cleared after creation, so `auto_clear` is not necessary anymore. But it is still configurable if desired.
 
 ### Registrations
 

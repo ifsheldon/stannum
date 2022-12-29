@@ -61,9 +61,7 @@ Make sure you have the following installed:
 
 * PyTorch
 * latest Taichi
-    * For performance concerns, we strongly recommend to use Taichi>=0.9.1
-    * If possible always use latest stable Taichi until the tracking issue #9 is fully resolved by Taichi developers
-
+    * For performance concerns, we strongly recommend to use Taichi >= 1.1.3 (see Issue #9 for more information)
 
 ## Bugs & Issues
 

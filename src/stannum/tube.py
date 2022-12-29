@@ -11,6 +11,250 @@ from .utils import is_kernel, autofill_kernel_name_available
 from .auxiliary import FieldManager, SNode, DimensionCalculator
 
 
+class Tube(torch.nn.Module):
+    """
+    Self-managed Taichi-PyTorch adapter
+    """
+
+    def __init__(self,
+                 device: Optional[torch.device] = None,
+                 persistent_field: bool = True,
+                 enable_backward: bool = True):
+        """
+        Init a tube
+
+        @param device: Optional, torch.device tensors are on, if it's None, the device is determined by input tensors
+        @param persistent_field: whether or not to save fields during forward pass.
+        If True, created fields will not be destroyed until compute graph is cleaned,
+        otherwise they will be destroyed right after forward pass is done and re-created in backward pass.
+        Having two modes is due to Taichi's performance issue, see https://github.com/taichi-dev/taichi/pull/4356
+        @param enable_backward: whether or not to enable backward gradient computation, disable it will have performance
+        improvement in forward pass, but attempting to do backward computation will cause runtime error.
+        """
+        super().__init__()
+        self.input_placeholders: List[Seal] = []
+        self.output_placeholders: List[Seal] = []
+        self.intermediate_field_placeholders: List[Seal] = []
+        self.seals: Dict[str, Seal] = {}
+        self.device: Optional[torch.device] = device
+        self._finished: bool = False
+        self.batched: bool = False
+        self.kernel_bundle_dict: Dict[str, TubeKernelBundle] = {}
+        if not enable_backward:
+            func = EagerTubeFunc
+        else:
+            if persistent_field:
+                func = PersistentTubeFunc
+            else:
+                func = EagerTubeFunc
+        self.func: torch.autograd.Function = func
+        self.enable_backward: bool = enable_backward
+
+    def register_input_tensor(self,
+                              dims: Iterable[Union[int, None]],
+                              dtype: torch.dtype,
+                              name: str,
+                              requires_grad: Optional[bool] = None,
+                              field_manager: Optional[FieldManager] = None):
+        """
+        Register an input tensor
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param requires_grad: optional, if it's None, it will be determined by input tensor
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
+        assert not self._finished, "Try to register input tensor after .finish()"
+        assert dtype is not None, "dtype cannot be None"
+        assert isinstance(dtype, torch.dtype)
+        assert name is not None, "name cannot be None"
+        assert name not in self.seals, "name registered"
+        seal = Seal(dtype, *dims,
+                    field_manager=field_manager,
+                    requires_grad=requires_grad,
+                    name=name)
+        seal.batched = len(dims) > 0 and dims[0] is None
+        self.batched = self.batched or seal.batched
+        self.input_placeholders.append(seal)
+        self.seals[name] = seal
+        return self
+
+    def register_output_tensor(self,
+                               dims_or_calc: Union[
+                                   Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                   Union[Callable, DimensionCalculator]],
+                               dtype: torch.dtype,
+                               name: str,
+                               requires_grad: bool,
+                               field_manager: Optional[FieldManager] = None):
+        """
+        Register an output tensor
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
+        @param dtype: torch data type
+        @param name: name of the tensor and corresponding field
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
+        @param requires_grad: if the output requires gradients
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
+        # TODO: update doc about dims
+        assert not self._finished, "Try to register output tensor after .finish()"
+        assert dtype is not None, "dtype cannot be None"
+        assert isinstance(dtype, torch.dtype)
+        assert name is not None, "name cannot be None"
+        assert name not in self.seals, "name registered"
+        assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
+        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
+            seal = Seal(dtype,
+                        shape_calc=dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=requires_grad,
+                        name=name)
+        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
+            assert not any(map(lambda d: d == -1, dims_or_calc)), \
+                "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
+            seal = Seal(dtype, *dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=requires_grad,
+                        name=name)
+            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
+        else:
+            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
+
+        self.output_placeholders.append(seal)
+        self.seals[name] = seal
+        return self
+
+    def register_intermediate_field(self,
+                                    dims_or_calc: Union[
+                                        Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                        Union[Callable, DimensionCalculator]],
+                                    ti_dtype: TiDataType,
+                                    name: str,
+                                    needs_grad: bool,
+                                    field_manager: Optional[FieldManager] = None):
+        """
+        Register an intermediate field,
+        which can be useful if multiple kernels are used and intermediate results between kernels are stored
+
+        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
+        to dynamically calculate dimensions
+        @param ti_dtype: taichi data type
+        @param name: name of the field
+        @param needs_grad: if the field needs gradients.
+        @param dims: dims can contain `None`, positive and negative numbers,
+        for restrictions and requirements, see README
+        @param dim_calc: DimensionCalculator instance or a function
+        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
+        """
+        assert not self._finished, "Try to register intermediate field after .finish()"
+        assert ti_dtype is not None, "dtype cannot be None"
+        assert isinstance(ti_dtype, TiDataType)
+        assert name is not None, "name cannot be None"
+        assert name not in self.seals, "name registered"
+        assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
+        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
+            seal = Seal(ti_dtype,
+                        shape_calc=dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=needs_grad,
+                        name=name)
+        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
+            assert not any(map(lambda d: d == -1, dims_or_calc)), \
+                "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
+            seal = Seal(ti_dtype, *dims_or_calc,
+                        field_manager=field_manager,
+                        requires_grad=needs_grad,
+                        name=name)
+            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
+        else:
+            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
+        self.intermediate_field_placeholders.append(seal)
+        self.seals[name] = seal
+        return self
+
+    def register_kernel(self, kernel: Callable, tensor_names: List[str], *extra_args: Any, name: Optional[str] = None):
+        """
+        Register a Taichi kernel
+
+        @param kernel: Taichi kernel. For requirements, see README
+        @param tensor_names: the names of registered tensors that are to be used in this kernel
+        @param extra_args: any extra arguments passed to the kernel
+        @param name: name of this kernel, if it's None, it will be kernel.__name__
+        """
+        assert not self._finished, "Try to register kernel after .finish()"
+        assert is_kernel(kernel), "Passed function is not a Taichi kernel"
+        assert autofill_kernel_name_available(kernel) or name is not None, \
+            "kernel has no __name__, please update your Taichi or specify its name"
+        assert all(map(lambda x: isinstance(x, str), tensor_names)), "arg_names must be strings"
+        not_registered_names = list(filter(lambda x: x not in self.seals, tensor_names))
+        assert len(not_registered_names) == 0, f"Some names are not registered: {not_registered_names}"
+        seals = list(map(lambda x: self.seals[x], tensor_names))
+        kernel_bundle = TubeKernelBundle(kernel, name, seals, extra_args)
+        assert kernel_bundle.name not in self.kernel_bundle_dict, \
+            f"Kernel with name {kernel_bundle.name} already registered"
+        self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
+        return self
+
+    def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
+        """
+        Set args for a kernel
+        @param kernel: kernel function or its name
+        @param extra_args: extra kernel arguments
+        """
+        if isinstance(kernel, str):
+            kernel_name = kernel
+        else:
+            kernel_name = kernel.__name__
+        assert kernel_name in self.kernel_bundle_dict, \
+            f"Kernel with name {kernel_name} not found, please register it first"
+        old_kernel_bundle = self.kernel_bundle_dict[kernel_name]
+        self.kernel_bundle_dict[kernel_name] = TubeKernelBundle(old_kernel_bundle.kernel,
+                                                                old_kernel_bundle.name,
+                                                                old_kernel_bundle.seals,
+                                                                extra_args)
+
+    def finish(self):
+        """
+        Finish all registrations
+        """
+        if self._finished:
+            return self
+        assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
+        assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
+        assert len(self.kernel_bundle_dict) > 0, "Must register at least 1 kernel"
+        # neg dim check
+        neg_dims = {-1}
+        for ip in self.input_placeholders:
+            for d in ip.dims:
+                if d is not None and d < 0:
+                    neg_dims.add(d)
+
+        for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
+            for d in placeholder.dims:
+                if d is not None and d < 0 and d not in neg_dims:
+                    raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
+        self._finished = True
+        return self
+
+    def forward(self, *input_tensors: torch.Tensor):
+        return self.func.apply(self, list(self.kernel_bundle_dict.values()), *input_tensors)
+
+    from taichi import __version__ as ti_version
+    if ti_version < (1, 1, 3):
+        import warnings
+        warnings.warn(f"You are using Taichi = {ti_version[0]}.{ti_version[1]}.{ti_version[2]} "
+                      f"older than the recommended Taichi = 1.1.3. "
+                      f"Using Tube with old Taichi may suffer from performance downgrade. "
+                      f"See Stannum issue #9 for more information.",
+                      stacklevel=2)
+
+
 class DefaultFieldManager(FieldManager):
     """
     Default field manager which layouts data in tensors by constructing fields
@@ -197,239 +441,6 @@ class TubeKernelBundle:
         self.kernel.grad(*(ti_fields + self.extra_args))
 
 
-class Tube(torch.nn.Module):
-    """
-    Self-managed Taichi-PyTorch adapter
-    """
-
-    def __init__(self,
-                 device: Optional[torch.device] = None,
-                 persistent_field: bool = True,
-                 enable_backward: bool = True):
-        """
-        Init a tube
-
-        @param device: Optional, torch.device tensors are on, if it's None, the device is determined by input tensors
-        @param persistent_field: whether or not to save fields during forward pass.
-        If True, created fields will not be destroyed until compute graph is cleaned,
-        otherwise they will be destroyed right after forward pass is done and re-created in backward pass.
-        Having two modes is due to Taichi's performance issue, see https://github.com/taichi-dev/taichi/pull/4356
-        @param enable_backward: whether or not to enable backward gradient computation, disable it will have performance
-        improvement in forward pass, but attempting to do backward computation will cause runtime error.
-        """
-        super().__init__()
-        self.input_placeholders: List[Seal] = []
-        self.output_placeholders: List[Seal] = []
-        self.intermediate_field_placeholders: List[Seal] = []
-        self.seals: Dict[str, Seal] = {}
-        self.kernel_bundles: List[TubeKernelBundle] = []
-        self.device: Optional[torch.device] = device
-        self._finished: bool = False
-        self.batched: bool = False
-        self.kernel_bundle_dict: Dict[str, TubeKernelBundle] = {}
-        if not enable_backward:
-            func = EagerTubeFunc
-        else:
-            if persistent_field:
-                func = PersistentTubeFunc
-            else:
-                func = EagerTubeFunc
-        self.func: torch.autograd.Function = func
-        self.enable_backward: bool = enable_backward
-
-    def register_input_tensor(self,
-                              dims: Iterable[Union[int, None]],
-                              dtype: torch.dtype,
-                              name: str,
-                              requires_grad: Optional[bool] = None,
-                              field_manager: Optional[FieldManager] = None):
-        """
-        Register an input tensor
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
-        @param dtype: torch data type
-        @param name: name of the tensor and corresponding field
-        @param requires_grad: optional, if it's None, it will be determined by input tensor
-        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
-        """
-        assert not self._finished, "Try to register input tensor after .finish()"
-        assert dtype is not None, "dtype cannot be None"
-        assert isinstance(dtype, torch.dtype)
-        assert name is not None, "name cannot be None"
-        assert name not in self.seals, "name registered"
-        seal = Seal(dtype, *dims,
-                    field_manager=field_manager,
-                    requires_grad=requires_grad,
-                    name=name)
-        seal.batched = len(dims) > 0 and dims[0] is None
-        self.batched = self.batched or seal.batched
-        self.input_placeholders.append(seal)
-        self.seals[name] = seal
-        return self
-
-    def register_output_tensor(self,
-                               dims_or_calc: Union[
-                                   Union[Tuple[Union[int, None]], List[Union[int, None]]],
-                                   Union[Callable, DimensionCalculator]],
-                               dtype: torch.dtype,
-                               name: str,
-                               requires_grad: bool,
-                               field_manager: Optional[FieldManager] = None):
-        """
-        Register an output tensor
-        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
-        to dynamically calculate dimensions
-        @param dtype: torch data type
-        @param name: name of the tensor and corresponding field
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
-        @param dim_calc: DimensionCalculator instance or a function
-        @param requires_grad: if the output requires gradients
-        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
-        """
-        # TODO: update doc about dims
-        assert not self._finished, "Try to register output tensor after .finish()"
-        assert dtype is not None, "dtype cannot be None"
-        assert isinstance(dtype, torch.dtype)
-        assert name is not None, "name cannot be None"
-        assert name not in self.seals, "name registered"
-        assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
-        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
-            seal = Seal(dtype,
-                        shape_calc=dims_or_calc,
-                        field_manager=field_manager,
-                        requires_grad=requires_grad,
-                        name=name)
-        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert not any(map(lambda d: d == -1, dims_or_calc)), \
-                "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
-            seal = Seal(dtype, *dims_or_calc,
-                        field_manager=field_manager,
-                        requires_grad=requires_grad,
-                        name=name)
-            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
-        else:
-            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
-
-        self.output_placeholders.append(seal)
-        self.seals[name] = seal
-        return self
-
-    def register_intermediate_field(self,
-                                    dims_or_calc: Union[
-                                        Union[Tuple[Union[int, None]], List[Union[int, None]]],
-                                        Union[Callable, DimensionCalculator]],
-                                    ti_dtype: TiDataType,
-                                    name: str,
-                                    needs_grad: bool,
-                                    field_manager: Optional[FieldManager] = None):
-        """
-        Register an intermediate field,
-        which can be useful if multiple kernels are used and intermediate results between kernels are stored
-
-        @param dims_or_calc: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README; Or DimensionCalculator instance or a function can be passed
-        to dynamically calculate dimensions
-        @param ti_dtype: taichi data type
-        @param name: name of the field
-        @param needs_grad: if the field needs gradients.
-        @param dims: dims can contain `None`, positive and negative numbers,
-        for restrictions and requirements, see README
-        @param dim_calc: DimensionCalculator instance or a function
-        @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
-        """
-        assert not self._finished, "Try to register intermediate field after .finish()"
-        assert ti_dtype is not None, "dtype cannot be None"
-        assert isinstance(ti_dtype, TiDataType)
-        assert name is not None, "name cannot be None"
-        assert name not in self.seals, "name registered"
-        assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
-        if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
-            seal = Seal(ti_dtype,
-                        shape_calc=dims_or_calc,
-                        field_manager=field_manager,
-                        requires_grad=needs_grad,
-                        name=name)
-        elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert not any(map(lambda d: d == -1, dims_or_calc)), \
-                "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
-            seal = Seal(ti_dtype, *dims_or_calc,
-                        field_manager=field_manager,
-                        requires_grad=needs_grad,
-                        name=name)
-            seal.batched = len(dims_or_calc) > 0 and dims_or_calc[0] is None
-        else:
-            raise Exception(f"Invalid dims_or_calc of type {type(dims_or_calc)}")
-        self.intermediate_field_placeholders.append(seal)
-        self.seals[name] = seal
-        return self
-
-    def register_kernel(self, kernel: Callable, tensor_names: List[str], *extra_args: Any, name: Optional[str] = None):
-        """
-        Register a Taichi kernel
-
-        @param kernel: Taichi kernel. For requirements, see README
-        @param tensor_names: the names of registered tensors that are to be used in this kernel
-        @param extra_args: any extra arguments passed to the kernel
-        @param name: name of this kernel, if it's None, it will be kernel.__name__
-        """
-        assert not self._finished, "Try to register kernel after .finish()"
-        assert is_kernel(kernel), "Passed function is not a Taichi kernel"
-        assert autofill_kernel_name_available(kernel) or name is not None, \
-            "kernel has no __name__, please update your Taichi or specify its name"
-        assert all(map(lambda x: isinstance(x, str), tensor_names)), "arg_names must be strings"
-        not_registered_names = list(filter(lambda x: x not in self.seals, tensor_names))
-        assert len(not_registered_names) == 0, f"Some names are not registered: {not_registered_names}"
-        seals = list(map(lambda x: self.seals[x], tensor_names))
-        kernel_bundle = TubeKernelBundle(kernel, name, seals, extra_args)
-        assert kernel_bundle.name not in self.kernel_bundle_dict, \
-            f"Kernel with name {kernel_bundle.name} already registered"
-        self.kernel_bundles.append(kernel_bundle)
-        self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
-        return self
-
-    def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
-        """
-        Set args for a kernel
-        @param kernel: kernel function or its name
-        @param extra_args: extra kernel arguments
-        """
-        if isinstance(kernel, str):
-            kernel_name = kernel
-        else:
-            kernel_name = kernel.__name__
-        assert kernel_name in self.kernel_bundle_dict, \
-            f"Kernel with name {kernel_name} not found, please register it first"
-        self.kernel_bundle_dict[kernel_name].extra_args = extra_args
-
-    def finish(self):
-        """
-        Finish all registrations
-        """
-        if self._finished:
-            return self
-        assert len(self.input_placeholders) > 0, "Must register at least 1 input field"
-        assert len(self.output_placeholders) > 0, "Must register at least 1 output field"
-        assert len(self.kernel_bundles) > 0, "Must register at least 1 kernel"
-        # neg dim check
-        neg_dims = {-1}
-        for ip in self.input_placeholders:
-            for d in ip.dims:
-                if d is not None and d < 0:
-                    neg_dims.add(d)
-
-        for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
-            for d in placeholder.dims:
-                if d is not None and d < 0 and d not in neg_dims:
-                    raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
-        self._finished = True
-        return self
-
-    def forward(self, *input_tensors: torch.Tensor):
-        return self.func.apply(self, *input_tensors)
-
-
 def concretize(device: torch.device,
                fields_builder: ti.FieldsBuilder,
                needs_grad: bool,
@@ -559,8 +570,9 @@ def unify_and_concretize_shapes(input_tensor_shapes: List[Tuple[int, ...]],
 class EagerTubeFunc(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, tube: Tube, *input_tensors: torch.Tensor):
+    def forward(ctx, tube: Tube, kernel_bundles: List[TubeKernelBundle], *input_tensors: torch.Tensor):
         assert len(input_tensors) == len(tube.input_placeholders)
+        ctx.kernel_bundles = kernel_bundles
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
@@ -614,7 +626,7 @@ class EagerTubeFunc(torch.autograd.Function):
                 concrete_input_field.from_tensor(tensor)
 
             # forward pass
-            for kernel_bundle in tube.kernel_bundles:
+            for kernel_bundle in kernel_bundles:
                 kernel_bundle.forward(seal_name_to_concrete_fields)
 
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
@@ -677,7 +689,7 @@ class EagerTubeFunc(torch.autograd.Function):
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
                 # forward pass
-                for kernel_bundle in tube.kernel_bundles:
+                for kernel_bundle in kernel_bundles:
                     kernel_bundle.forward(seal_name_to_concrete_fields)
                 output_tensors = [ocf.to_tensor() for ocf in concrete_output_field_batch]
                 output_tensor_batches.append(output_tensors)
@@ -719,6 +731,7 @@ class EagerTubeFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
         tube = ctx.tube
+        kernel_bundles = ctx.kernel_bundles
         assert tube.enable_backward, "Attempting to run backward computation when enable_backward = False"
         input_tensor_num = ctx.input_tensor_num
         all_tensors = ctx.saved_tensors
@@ -769,10 +782,10 @@ class EagerTubeFunc(torch.autograd.Function):
                 for field in intermediate_concrete_fields + input_concrete_fields:
                     field.clear_grad()
             # backward pass
-            for kernel_bundle in reversed(tube.kernel_bundles):
+            for kernel_bundle in reversed(kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
-            gradient_tensors = [None]
+            gradient_tensors = [None, None]
             for input_concrete_field in input_concrete_fields:
                 if input_concrete_field.requires_grad:
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
@@ -850,7 +863,7 @@ class EagerTubeFunc(torch.autograd.Function):
                         if not seal.batched:
                             field.clear_grad()
                 # backward pass
-                for kernel_bundle in reversed(tube.kernel_bundles):
+                for kernel_bundle in reversed(kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
 
                 grad_tensor_batch = []
@@ -861,7 +874,7 @@ class EagerTubeFunc(torch.autograd.Function):
                         grad_tensor_batch.append(None)
                 gradients.append(grad_tensor_batch)
 
-            input_grads = [None]
+            input_grads = [None, None]
             for input_idx, input_seal in enumerate(input_seals):
                 grad_per_input = [gradients[batch_idx][input_idx] for batch_idx in range(batch_num)]
                 if any(map(lambda x: x is None, grad_per_input)):
@@ -892,8 +905,9 @@ class PersistentTubeFunc(torch.autograd.Function):
         return selected_concrete_fields
 
     @staticmethod
-    def forward(ctx, tube: Tube, *input_tensors: torch.Tensor):
+    def forward(ctx, tube: Tube, kernel_bundles: List[TubeKernelBundle], *input_tensors: torch.Tensor):
         assert len(input_tensors) == len(tube.input_placeholders)
+        ctx.kernel_bundles = kernel_bundles
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
         intermediate_seals = tube.intermediate_field_placeholders
@@ -938,7 +952,7 @@ class PersistentTubeFunc(torch.autograd.Function):
             for tensor, concrete_input_field in zip(input_tensors, input_concrete_fields):
                 concrete_input_field.from_tensor(tensor)
 
-            for kernel_bundle in tube.kernel_bundles:
+            for kernel_bundle in kernel_bundles:
                 kernel_bundle.forward(seal_name_to_concrete_fields)
 
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
@@ -993,7 +1007,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                 input_tensor_batch = select_tensor(input_seals, input_tensors, batch_idx)
                 for tensor, concrete_input_field in zip(input_tensor_batch, concrete_input_field_batch):
                     concrete_input_field.from_tensor(tensor)
-                for kernel_bundle in tube.kernel_bundles:
+                for kernel_bundle in kernel_bundles:
                     kernel_bundle.forward(seal_name_to_concrete_fields)
                 output_tensors = [ocf.to_tensor() for ocf in concrete_output_field_batch]
                 output_tensor_batches.append(output_tensors)
@@ -1021,6 +1035,7 @@ class PersistentTubeFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> Any:
         tube: Tube = ctx.tube
+        kernel_bundles = ctx.kernel_bundles
         batch_num = ctx.batch_num
         input_seals = tube.input_placeholders
         output_seals = tube.output_placeholders
@@ -1042,10 +1057,10 @@ class PersistentTubeFunc(torch.autograd.Function):
                 # clear grad field due to uninitialized memory in old Taichi
                 for field in intermediate_concrete_fields + input_concrete_fields:
                     field.clear_grad()
-            for kernel_bundle in reversed(tube.kernel_bundles):
+            for kernel_bundle in reversed(kernel_bundles):
                 kernel_bundle.backward(seal_name_to_concrete_fields)
 
-            gradient_tensors = [None]
+            gradient_tensors = [None, None]
             for input_concrete_field in input_concrete_fields:
                 if input_concrete_field.requires_grad:
                     gradient_tensors.append(input_concrete_field.grad_to_tensor())
@@ -1080,7 +1095,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                                            input_concrete_field_batch + intermediate_concrete_field_batch):
                         if not seal.batched:
                             field.clear_grad()
-                for kernel_bundle in reversed(tube.kernel_bundles):
+                for kernel_bundle in reversed(kernel_bundles):
                     kernel_bundle.backward(seal_name_to_concrete_fields)
                 grad_tensor_batch = []
                 for input_concrete_field in input_concrete_field_batch:
@@ -1090,7 +1105,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                         grad_tensor_batch.append(None)
                 gradients.append(grad_tensor_batch)
 
-            input_grads = [None]
+            input_grads = [None, None]
             for input_idx, input_seal in enumerate(input_seals):
                 grad_per_input = [gradients[batch_idx][input_idx] for batch_idx in range(batch_num)]
                 if any(map(lambda x: x is None, grad_per_input)):

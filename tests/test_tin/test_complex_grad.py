@@ -23,7 +23,7 @@ def test_complex_scalar_field():
     ti.init(ti.cpu)
     data_oriented_scalar_field = Multiplier0(2)
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented_scalar_field, device) \
+    tin_layer = Tin(data_oriented_scalar_field, device, True) \
         .register_kernel(data_oriented_scalar_field.forward_kernel, 1.0) \
         .register_input_field(data_oriented_scalar_field.input_field, complex_dtype=True) \
         .register_output_field(data_oriented_scalar_field.output_field, complex_dtype=True) \
@@ -69,7 +69,7 @@ def test_complex_vector_field():
     ti.init(ti.cpu)
     data_oriented_vector_field = Multiplier1(2)
     device = torch.device("cpu")
-    tin_layer = Tin(data_oriented_vector_field, device) \
+    tin_layer = Tin(data_oriented_vector_field, device, True) \
         .register_kernel(data_oriented_vector_field.forward_kernel, 1.0) \
         .register_input_field(data_oriented_vector_field.input_field, complex_dtype=True) \
         .register_output_field(data_oriented_vector_field.output_field, complex_dtype=True) \
