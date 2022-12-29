@@ -359,6 +359,9 @@ class ConcreteField:
 
 
 class Seal:
+    """
+    Encapsulation of the information needed to construct a concrete Taichi field
+    """
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
                  *dims: int,
