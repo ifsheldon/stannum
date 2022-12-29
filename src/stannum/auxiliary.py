@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Union, Dict
+from typing import Tuple, Union, Dict, Optional
 import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
@@ -12,16 +12,6 @@ elif hasattr(ti, "_snode"):
 else:
     from .utils import __ti_version
     raise Exception(f"Unable to import SNodeTree, Taichi version = {__ti_version}")
-
-
-class DimensionCalculator(ABC):
-
-    @abstractmethod
-    def calc_dimension(self,
-                       field_name: str,
-                       input_tensor_dimensions: Dict[str, Tuple[int, ...]],
-                       input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
-        pass
 
 
 class FieldManager(ABC):
@@ -76,6 +66,9 @@ class SNode:
         self.destroy()
 
 
+DimID = str | int
+
+
 class DimEnum:
     """
     Enum with payload(i.e., dim_id)
@@ -84,7 +77,7 @@ class DimEnum:
     BATCH_ID = 1
     MATCH_ID = 2
 
-    def __init__(self, id: int, dim_id: Union[str, int, None] = None):
+    def __init__(self, id: int, dim_id: Optional[DimID] = None):
         self.id = id
         self.dim_id = dim_id
 
@@ -101,7 +94,7 @@ class DimEnum:
 
     def __hash__(self):
         if self.id != DimEnum.MATCH_ID:
-            return hash(self.id)
+            return hash((self.id, str(self)))
         else:
             return hash((self.id, self.dim_id))
 
@@ -123,10 +116,23 @@ class DimEnum:
         return self.id == DimEnum.BATCH_ID
 
 
-Any = DimEnum(DimEnum.ANY_ID, None)
-Batch = DimEnum(DimEnum.BATCH_ID, None)
+AnyDim = DimEnum(DimEnum.ANY_ID, None)
+BatchDim = DimEnum(DimEnum.BATCH_ID, None)
 
 
-def Match(dim_id: Union[str, int]):
-    assert isinstance(dim_id, (str, int)), f"Unsupported dim_id type of {type(dim_id)}"
+def MatchDim(dim_id: DimID):
+    assert isinstance(dim_id, DimID), f"Unsupported dim_id type of {type(dim_id)}"
     return DimEnum(DimEnum.MATCH_ID, dim_id)
+
+
+DimOption = int | DimEnum
+
+
+class DimensionCalculator(ABC):
+
+    @abstractmethod
+    def calc_dimension(self,
+                       field_name: str,
+                       input_dimensions: Dict[str, Tuple[DimOption, ...]],
+                       input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
+        pass

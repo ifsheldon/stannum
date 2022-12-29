@@ -1,5 +1,5 @@
 from .tin import Tin, EmptyTin
 from .tube import Tube
-from .auxiliary import Match, Any, Batch
+from .auxiliary import MatchDim, AnyDim, BatchDim, DimOption, DimID
 
-__all__ = ["Tin", "EmptyTin", "Tube", "Match", "Any", "Batch"]
+__all__ = ["Tin", "EmptyTin", "Tube", "MatchDim", "AnyDim", "BatchDim", "DimOption", "DimID"]

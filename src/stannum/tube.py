@@ -8,7 +8,7 @@ from taichi.lang.matrix import MatrixField
 from functools import partial
 
 from .utils import is_kernel, autofill_kernel_name_available
-from .auxiliary import FieldManager, SNode, DimensionCalculator
+from .auxiliary import FieldManager, SNode, DimensionCalculator, DimEnum, DimOption, DimID
 
 
 class Tube(torch.nn.Module):
@@ -51,7 +51,7 @@ class Tube(torch.nn.Module):
         self.enable_backward: bool = enable_backward
 
     def register_input_tensor(self,
-                              dims: Iterable[Union[int, None]],
+                              dims: Union[Tuple[DimOption], List[DimOption]],
                               dtype: torch.dtype,
                               name: str,
                               requires_grad: Optional[bool] = None,
@@ -70,6 +70,8 @@ class Tube(torch.nn.Module):
         assert isinstance(dtype, torch.dtype)
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
+        assert all(map(lambda d: isinstance(d, DimOption), dims)), \
+            f"dims must be all DimOptions, got {dims}"
         seal = Seal(dtype, *dims,
                     field_manager=field_manager,
                     requires_grad=requires_grad,
@@ -82,7 +84,7 @@ class Tube(torch.nn.Module):
 
     def register_output_tensor(self,
                                dims_or_calc: Union[
-                                   Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                   Union[Tuple[DimOption], List[DimOption]],
                                    Union[Callable, DimensionCalculator]],
                                dtype: torch.dtype,
                                name: str,
@@ -115,8 +117,10 @@ class Tube(torch.nn.Module):
                         requires_grad=requires_grad,
                         name=name)
         elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert not any(map(lambda d: d == -1, dims_or_calc)), \
-                "Dim = -1 is not allowed when registering output tensors but only registering input tensors"
+            assert all(map(lambda d: isinstance(d, DimOption), dims_or_calc)), \
+                f"dims must be all DimOptions, got {dims_or_calc}"
+            assert not any(map(is_any_dim, dims_or_calc)), \
+                "Dim = Any is not allowed when registering output tensors but only registering input tensors"
             seal = Seal(dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=requires_grad,
@@ -131,7 +135,7 @@ class Tube(torch.nn.Module):
 
     def register_intermediate_field(self,
                                     dims_or_calc: Union[
-                                        Union[Tuple[Union[int, None]], List[Union[int, None]]],
+                                        Union[Tuple[DimOption], List[DimOption]],
                                         Union[Callable, DimensionCalculator]],
                                     ti_dtype: TiDataType,
                                     name: str,
@@ -165,8 +169,10 @@ class Tube(torch.nn.Module):
                         requires_grad=needs_grad,
                         name=name)
         elif isinstance(dims_or_calc, (Tuple, List)):  # explicit dims
-            assert not any(map(lambda d: d == -1, dims_or_calc)), \
-                "Dim = -1 is not allowed when registering intermediate fields but only registering input tensors"
+            assert all(map(lambda d: isinstance(d, DimOption), dims_or_calc)), \
+                f"dims must be all DimOptions, got {dims_or_calc}"
+            assert not any(map(is_any_dim, dims_or_calc)), \
+                "Dim = Any is not allowed when registering intermediate fields but only registering input tensors"
             seal = Seal(ti_dtype, *dims_or_calc,
                         field_manager=field_manager,
                         requires_grad=needs_grad,
@@ -364,7 +370,7 @@ class Seal:
     """
 
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
-                 *dims: int,
+                 *dims: DimOption,
                  shape_calc: Optional[Union[Callable, DimensionCalculator]] = None,
                  field_manager: Optional[FieldManager] = None,
                  requires_grad: Optional[bool] = None,
@@ -383,10 +389,10 @@ class Seal:
             for i in dims:
                 assert i != 0, f"Dimension cannot be 0, got {dims}"
 
-            self.dims: Optional[Tuple[int, ...]] = dims
+            self.dims: Optional[Tuple[DimOption, ...]] = dims
             self.dims_calc: Optional[Union[Callable, DimensionCalculator]] = None
-        else:
-            self.dims: Optional[Tuple[int, ...]] = None
+        else:  # dim calculator
+            self.dims: Optional[Tuple[DimOption, ...]] = None
             self.dims_calc: Union[Callable, DimensionCalculator] = shape_calc
 
         self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
@@ -409,7 +415,7 @@ class Seal:
                              device, self.name)
 
     def calc_dimensions(self,
-                        input_tensor_dimensions: Dict[str, Tuple[int, ...]],
+                        input_dimensions: Dict[str, Tuple[DimOption, ...]],
                         input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[int, ...]:
         assert self.dims_calc is not None
         if isinstance(self.dims_calc, DimensionCalculator):
@@ -442,6 +448,18 @@ class TubeKernelBundle:
         concrete_fields = map(lambda seal_name: seal_name_to_concrete_field[seal_name], self.seal_names)
         ti_fields = tuple(map(lambda x: x.field, concrete_fields))
         self.kernel.grad(*(ti_fields + self.extra_args))
+
+
+def is_batch_dim(dim_opt: DimOption):
+    return isinstance(dim_opt, DimEnum) and dim_opt.is_batch()
+
+
+def is_match_dim(dim_opt: DimOption):
+    return isinstance(dim_opt, DimEnum) and dim_opt.is_match()
+
+
+def is_any_dim(dim_opt: DimOption):
+    return isinstance(dim_opt, DimEnum) and dim_opt.is_any()
 
 
 def concretize(device: torch.device,
