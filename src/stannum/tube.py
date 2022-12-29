@@ -1,7 +1,7 @@
 import taichi as ti
 import torch
 from taichi.lang.impl import axes
-from typing import Optional, Callable, Union, Tuple, List, Iterable, Dict, Any
+from typing import Optional, Callable, Tuple, List, Dict, Any
 from .utils import to_taichi_type, need_auto_clearing_fields, TiDataType
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
@@ -51,7 +51,7 @@ class Tube(torch.nn.Module):
         self.enable_backward: bool = enable_backward
 
     def register_input_tensor(self,
-                              dims: Union[Tuple[DimOption], List[DimOption]],
+                              dims: Tuple[DimOption] | List[DimOption],
                               dtype: torch.dtype,
                               name: str,
                               requires_grad: Optional[bool] = None,
@@ -83,9 +83,7 @@ class Tube(torch.nn.Module):
         return self
 
     def register_output_tensor(self,
-                               dims_or_calc: Union[
-                                   Union[Tuple[DimOption], List[DimOption]],
-                                   Union[Callable, DimensionCalculator]],
+                               dims_or_calc: Tuple[DimOption] | List[DimOption] | Callable | DimensionCalculator,
                                dtype: torch.dtype,
                                name: str,
                                requires_grad: bool,
@@ -134,9 +132,7 @@ class Tube(torch.nn.Module):
         return self
 
     def register_intermediate_field(self,
-                                    dims_or_calc: Union[
-                                        Union[Tuple[DimOption], List[DimOption]],
-                                        Union[Callable, DimensionCalculator]],
+                                    dims_or_calc: Tuple[DimOption] | List[DimOption] | Callable | DimensionCalculator,
                                     ti_dtype: TiDataType,
                                     name: str,
                                     needs_grad: bool,
@@ -207,7 +203,7 @@ class Tube(torch.nn.Module):
         self.kernel_bundle_dict[kernel_bundle.name] = kernel_bundle
         return self
 
-    def set_kernel_extra_args(self, kernel: Union[Callable, str], *extra_args: Any):
+    def set_kernel_extra_args(self, kernel: Callable| str, *extra_args: Any):
         """
         Set args for a kernel
         @param kernel: kernel function or its name
@@ -278,7 +274,7 @@ class DefaultFieldManager(FieldManager):
     def construct_field(self,
                         fields_builder: ti.FieldsBuilder,
                         concrete_tensor_shape: Tuple[int, ...],
-                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
+                        needs_grad: bool) -> ScalarField | MatrixField:
         assert not fields_builder.finalized
         if self.complex_dtype:
             field = ti.Vector.field(2, dtype=self.dtype, needs_grad=needs_grad)
@@ -293,24 +289,24 @@ class DefaultFieldManager(FieldManager):
             fields_builder.dense(axes(*range(len(concrete_tensor_shape))), concrete_tensor_shape).place(field)
         return field
 
-    def to_tensor(self, field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+    def to_tensor(self, field: ScalarField | MatrixField) -> torch.Tensor:
         tensor = field.to_torch(device=self.device)
         if self.complex_dtype:
             tensor = torch.view_as_complex(tensor)
         return tensor
 
-    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+    def grad_to_tensor(self, grad_field: ScalarField | MatrixField) -> torch.Tensor:
         tensor = grad_field.to_torch(device=self.device)
         if self.complex_dtype:
             tensor = torch.view_as_complex(tensor)
         return tensor
 
-    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+    def from_tensor(self, field: ScalarField | MatrixField, tensor: torch.Tensor):
         if self.complex_dtype:
             tensor = torch.view_as_real(tensor)
         field.from_torch(tensor)
 
-    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+    def grad_from_tensor(self, grad_field: ScalarField | MatrixField, tensor: torch.Tensor):
         if self.complex_dtype:
             tensor = torch.view_as_real(tensor)
         grad_field.from_torch(tensor)
@@ -336,7 +332,7 @@ class ConcreteField:
         field = field_manager.construct_field(fields_builder, concrete_tensor_shape, requires_grad)
         self.fb = fields_builder
         self.complex_dtype: bool = complex_dtype
-        self.field: Union[ScalarField, MatrixField] = field
+        self.field: ScalarField | MatrixField = field
         self.device: torch.device = device
         self.name: str = name
         self.field_manager: FieldManager = field_manager
@@ -369,9 +365,9 @@ class Seal:
     Encapsulation of the information needed to construct a concrete Taichi field
     """
 
-    def __init__(self, dtype: Union[TiDataType, torch.dtype],
+    def __init__(self, dtype: TiDataType | torch.dtype,
                  *dims: DimOption,
-                 shape_calc: Optional[Union[Callable, DimensionCalculator]] = None,
+                 shape_calc: Optional[Callable | DimensionCalculator] = None,
                  field_manager: Optional[FieldManager] = None,
                  requires_grad: Optional[bool] = None,
                  name: Optional[str] = None):
@@ -392,10 +388,10 @@ class Seal:
                 assert i != 0, f"Dimension cannot be 0, got {dims}"
 
             self.dims: Optional[Tuple[DimOption, ...]] = dims
-            self.dims_calc: Optional[Union[Callable, DimensionCalculator]] = None
+            self.dims_calc: Optional[Callable | DimensionCalculator] = None
         else:  # dim calculator
             self.dims: Optional[Tuple[DimOption, ...]] = None
-            self.dims_calc: Union[Callable, DimensionCalculator] = shape_calc
+            self.dims_calc: Optional[Callable | DimensionCalculator] = shape_calc
 
         self.complex_dtype = dtype == torch.cfloat or dtype == torch.cdouble
         if self.complex_dtype:
@@ -485,7 +481,7 @@ def select_tensor(seals: List[Seal], tensors: Tuple[torch.Tensor], batch_idx: in
 
 
 def select_concrete_field(seals: List[Seal],
-                          concrete_fields: List[Union[ConcreteField, List[ConcreteField]]],
+                          concrete_fields: List[ConcreteField | List[ConcreteField]],
                           batch_idx: int) -> List[ConcreteField]:
     assert len(seals) == len(concrete_fields)
     selected_concrete_fields = [
@@ -625,14 +621,14 @@ class EagerTubeFunc(torch.autograd.Function):
         other_field_concretizer = partial(concretize, device, fb, None)
         if batch_num is None:
             # concretize fields
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(input_field_concretizer,
                     [x.requires_grad for x in input_tensors],
                     concrete_input_shapes,
                     input_seals))
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_intermediate_shapes, intermediate_seals))
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_output_shapes, output_seals))
             seal_name_to_concrete_fields = {
                 seal.name: concrete_field
@@ -661,7 +657,7 @@ class EagerTubeFunc(torch.autograd.Function):
             saved_tensors += list(output_tensors)
         else:
             # concretize fields
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal, tensor in zip(concrete_input_shapes, input_seals, input_tensors):
                 requires_grad = tensor.requires_grad
                 if seal.batched:
@@ -672,7 +668,7 @@ class EagerTubeFunc(torch.autograd.Function):
                     concrete_fields = input_field_concretizer(requires_grad, tensor_shape, seal)
                 input_concrete_fields.append(concrete_fields)
 
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_intermediate_shapes, intermediate_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]
@@ -681,7 +677,7 @@ class EagerTubeFunc(torch.autograd.Function):
                     concrete_fields = other_field_concretizer(tensor_shape, seal)
                 intermediate_concrete_fields.append(concrete_fields)
 
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_output_shapes, output_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]
@@ -775,14 +771,14 @@ class EagerTubeFunc(torch.autograd.Function):
         other_field_concretizer = partial(concretize, device, fb, None)
         if batch_num is None:
             # concretize fields
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(input_field_concretizer,
                     [x.requires_grad for x in input_tensors],
                     concrete_input_shapes,
                     input_seals))
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_intermediate_shapes, intermediate_seals))
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_output_shapes, output_seals))
             snode = fb.finalize()
 
@@ -821,7 +817,7 @@ class EagerTubeFunc(torch.autograd.Function):
             return tuple(gradient_tensors)
         else:
             # concretize fields
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal, tensor in zip(concrete_input_shapes, input_seals, input_tensors):
                 requires_grad = tensor.requires_grad
                 if seal.batched:
@@ -832,7 +828,7 @@ class EagerTubeFunc(torch.autograd.Function):
                     concrete_fields = input_field_concretizer(requires_grad, tensor_shape, seal)
                 input_concrete_fields.append(concrete_fields)
 
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_intermediate_shapes, intermediate_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]
@@ -841,7 +837,7 @@ class EagerTubeFunc(torch.autograd.Function):
                     concrete_fields = other_field_concretizer(tensor_shape, seal)
                 intermediate_concrete_fields.append(concrete_fields)
 
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_output_shapes, output_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]
@@ -918,7 +914,7 @@ class PersistentTubeFunc(torch.autograd.Function):
 
     @staticmethod
     def select_concrete_field(seals: List[Seal],
-                              concrete_fields: List[Union[ConcreteField, List[ConcreteField]]],
+                              concrete_fields: List[ConcreteField | List[ConcreteField]],
                               batch_idx: int) -> List[ConcreteField]:
         assert len(seals) == len(concrete_fields)
         selected_concrete_fields = []
@@ -953,14 +949,14 @@ class PersistentTubeFunc(torch.autograd.Function):
         input_field_concretizer = partial(concretize, device, fb)
         other_field_concretizer = partial(concretize, device, fb, None)
         if batch_num is None:
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(input_field_concretizer,
                     [x.requires_grad for x in input_tensors],
                     concrete_input_shapes,
                     input_seals))
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_intermediate_shapes, intermediate_seals))
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = list(
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = list(
                 map(other_field_concretizer, concrete_output_shapes, output_seals))
             seal_name_to_concrete_fields = {
                 seal.name: concrete_field
@@ -983,7 +979,7 @@ class PersistentTubeFunc(torch.autograd.Function):
             output_tensors = tuple(ocf.to_tensor().requires_grad_(s.requires_grad) for s, ocf in
                                    zip(output_seals, output_concrete_fields))
         else:
-            input_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            input_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal, tensor in zip(concrete_input_shapes, input_seals, input_tensors):
                 requires_grad = tensor.requires_grad
                 if seal.batched:
@@ -994,7 +990,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                     concrete_fields = input_field_concretizer(requires_grad, tensor_shape, seal)
                 input_concrete_fields.append(concrete_fields)
 
-            intermediate_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            intermediate_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_intermediate_shapes, intermediate_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]
@@ -1003,7 +999,7 @@ class PersistentTubeFunc(torch.autograd.Function):
                     concrete_fields = other_field_concretizer(tensor_shape, seal)
                 intermediate_concrete_fields.append(concrete_fields)
 
-            output_concrete_fields: List[Union[ConcreteField, List[ConcreteField]]] = []
+            output_concrete_fields: List[ConcreteField | List[ConcreteField]] = []
             for tensor_shape, seal in zip(concrete_output_shapes, output_seals):
                 if seal.batched:
                     tensor_shape = tensor_shape[1:]

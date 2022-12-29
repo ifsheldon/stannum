@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Union, Dict, Optional
+from typing import Tuple, Dict, Optional
 import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
@@ -28,23 +28,23 @@ class FieldManager(ABC):
     def construct_field(self,
                         fields_builder: ti.FieldsBuilder,
                         concrete_tensor_shape: Tuple[int, ...],
-                        needs_grad: bool) -> Union[ScalarField, MatrixField]:
+                        needs_grad: bool) -> ScalarField | MatrixField:
         pass
 
     @abstractmethod
-    def to_tensor(self, field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+    def to_tensor(self, field: ScalarField | MatrixField) -> torch.Tensor:
         pass
 
     @abstractmethod
-    def grad_to_tensor(self, grad_field: Union[ScalarField, MatrixField]) -> torch.Tensor:
+    def grad_to_tensor(self, grad_field: ScalarField | MatrixField) -> torch.Tensor:
         pass
 
     @abstractmethod
-    def from_tensor(self, field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+    def from_tensor(self, field: ScalarField | MatrixField, tensor: torch.Tensor):
         pass
 
     @abstractmethod
-    def grad_from_tensor(self, grad_field: Union[ScalarField, MatrixField], tensor: torch.Tensor):
+    def grad_from_tensor(self, grad_field: ScalarField | MatrixField, tensor: torch.Tensor):
         pass
 
 

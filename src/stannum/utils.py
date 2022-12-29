@@ -1,5 +1,5 @@
 import sys
-from typing import Union, Callable
+from typing import Callable
 
 from taichi import __version__ as ti_version
 from taichi.lang.kernel_impl import Kernel
@@ -54,7 +54,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def check_field_needs_grad(field: Union[MatrixField, ScalarField], needs_grad: Union[None, bool]):
+def check_field_needs_grad(field: MatrixField | ScalarField, needs_grad: None | bool):
     """
     Checks if the Taichi in use is new enough to support automatic grad configuration based on field.snode.needs_grad
     :param field: a Taichi field
