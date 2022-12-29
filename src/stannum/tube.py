@@ -238,6 +238,8 @@ class Tube(torch.nn.Module):
                     match_dims.add(d.dim_id)
 
         for placeholder in self.intermediate_field_placeholders + self.output_placeholders:
+            if placeholder.dims_calc is not None:  # dims are calculated dynamically
+                continue
             for d in placeholder.dims:
                 if is_match_dim(d) and d.dim_id not in match_dims:
                     raise Exception(f"Dimension={d} in {placeholder.name} is not registered in any input tensors")
