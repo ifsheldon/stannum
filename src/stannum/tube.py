@@ -106,7 +106,6 @@ class Tube(torch.nn.Module):
         @param requires_grad: if the output requires gradients
         @param field_manager: customized field manager, if it's None, a DefaultFieldManger will be used
         """
-        # TODO: update doc about dims
         assert not self._finished, "Try to register output tensor after .finish()"
         assert dtype is not None, "dtype cannot be None"
         assert isinstance(dtype, torch.dtype)
