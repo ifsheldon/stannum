@@ -129,4 +129,12 @@ class DimensionCalculator(ABC):
                        field_name: str,
                        input_dimensions: Dict[str, Tuple[DimOption, ...]],
                        input_tensor_shapes: Dict[str, Tuple[int, ...]]) -> Tuple[DimOption, ...]:
+        """
+        Calculate dimensions for a output/intermediate field
+
+        @param field_name: the name of the field for which the dimensions are calculated
+        @param input_dimensions: the dict mapping names of input fields to input fields
+        @param input_tensor_shapes: the dict mapping names of input fields to
+        shapes of input tensors that correspond to input fields
+        """
         pass
