@@ -507,7 +507,7 @@ def concretize_dimensions_and_unify(input_tensor_shapes: List[Tuple[int, ...]],
                                     input_placeholders: List[Seal],
                                     intermediate_fields: List[Seal],
                                     output_placeholders: List[Seal]) \
-        -> Tuple[List[List[int]], List[List[int]], List[List[int]], int | None]:
+        -> Tuple[List[List[int]], List[List[int]], List[List[int]], Union[int, None]]:
     """
     Try to find out concrete numbers in dimension placeholders (like AnyDim, MatchDim, BatchDim)
     """
@@ -558,8 +558,8 @@ def concretize_dimensions_and_unify(input_tensor_shapes: List[Tuple[int, ...]],
     get_dims = lambda x: x.dims if x.dims is not None \
         else x.calc_dimensions(input_tensor_dimensions_dict, input_tensor_shapes_dict)
 
-    output_dims: List[Tuple[DimOption, ...] | List[DimOption]] = list(map(get_dims, output_placeholders))
-    intermediate_dims: List[Tuple[DimOption, ...] | List[DimOption]] = list(map(get_dims, intermediate_fields))
+    output_dims: Union[List[Tuple[DimOption, ...], List[DimOption]]] = list(map(get_dims, output_placeholders))
+    intermediate_dims: Union[List[Tuple[DimOption, ...], List[DimOption]]] = list(map(get_dims, intermediate_fields))
     # batching check
     if batch_num is not None:  # batching
         for seal in output_placeholders + intermediate_fields:

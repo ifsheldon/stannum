@@ -66,7 +66,7 @@ class SNode:
         self.destroy()
 
 
-DimID = str | int
+DimID = Union[str, int]
 
 
 class DimEnum:
@@ -116,7 +116,7 @@ def MatchDim(dim_id: DimID):
     return DimEnum(DimEnum.MATCH_ID, dim_id)
 
 
-DimOption = int | DimEnum
+DimOption = Union[int, DimEnum]
 
 
 class DimensionCalculator(ABC):
