@@ -75,6 +75,9 @@ class Tube(torch.nn.Module):
         assert all(map(lambda x: x > 0,
                        filter(lambda x: isinstance(x, int), dims))), \
             f"all integer dims must be positive, got {dims}"
+        if field_manager is not None:
+            assert isinstance(field_manager, (FieldManager, Callable)), \
+                "field_manager must be a FieldManager or a Callable"
         seal = Seal(dtype, *dims,
                     field_manager=field_manager,
                     requires_grad=requires_grad,
@@ -111,6 +114,9 @@ class Tube(torch.nn.Module):
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert requires_grad is not None, "requires_grad cannot be None when registering an output tensor"
+        if field_manager is not None:
+            assert isinstance(field_manager, (FieldManager, Callable)), \
+                "field_manager must be a FieldManager or a Callable"
         if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
             seal = Seal(dtype,
                         shape_calc=dims_or_calc,
@@ -163,6 +169,9 @@ class Tube(torch.nn.Module):
         assert name is not None, "name cannot be None"
         assert name not in self.seals, "name registered"
         assert needs_grad is not None, "requires_grad cannot be None when registering an intermediate field"
+        if field_manager is not None:
+            assert isinstance(field_manager, (FieldManager, Callable)), \
+                "field_manager must be a FieldManager or a Callable"
         if isinstance(dims_or_calc, (Callable, DimensionCalculator)):  # calculator
             seal = Seal(ti_dtype,
                         shape_calc=dims_or_calc,
