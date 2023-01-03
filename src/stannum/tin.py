@@ -172,6 +172,7 @@ class EmptyTin(torch.nn.Module):
         """
         assert self.finished, "Please finish registration first"
         assert self.batch_mode, "This hook is used only when batch mode is on"
+        assert isinstance(func, Callable), "func must be Callable"
         self.batch_iteration_hook = func
 
     def set_internal_field_backward_hook(self, func: Callable):
@@ -184,7 +185,7 @@ class EmptyTin(torch.nn.Module):
 
         """
         assert self.finished, "Please finish registration first"
-        assert self.batch_mode, "This hook is used only when batch mode is on"
+        assert isinstance(func, Callable), "func must be Callable"
         self.internal_field_backward_hook = func
 
     def finish(self):
