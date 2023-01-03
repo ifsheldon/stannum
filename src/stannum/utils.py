@@ -92,3 +92,10 @@ def autofill_kernel_name_available(kernel: Callable):
 
 def is_kernel(kernel):
     return hasattr(kernel, "_adjoint") and isinstance(kernel._adjoint, Kernel)
+
+
+class BatchCtx:
+    """
+    A persistent object across iterations in a batch as a scratch pad.
+    """
+    pass
