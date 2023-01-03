@@ -55,7 +55,7 @@ class Tube(torch.nn.Module):
                               dtype: torch.dtype,
                               name: str,
                               requires_grad: Optional[bool] = None,
-                              field_manager: Optional[FieldManager] = None):
+                              field_manager: Union[FieldManager, Callable, None] = None):
         """
         Register an input tensor
 
@@ -90,7 +90,7 @@ class Tube(torch.nn.Module):
                                dtype: torch.dtype,
                                name: str,
                                requires_grad: bool,
-                               field_manager: Optional[FieldManager] = None):
+                               field_manager: Union[FieldManager, Callable, None] = None):
         """
         Register an output tensor
 
@@ -141,7 +141,7 @@ class Tube(torch.nn.Module):
                                     ti_dtype: TiDataType,
                                     name: str,
                                     needs_grad: bool,
-                                    field_manager: Optional[FieldManager] = None):
+                                    field_manager: Union[FieldManager, Callable, None] = None):
         """
         Register an intermediate field,
         which can be useful if multiple kernels are used and intermediate results between kernels are stored
@@ -329,7 +329,7 @@ class ConcreteField:
     def __init__(self,
                  dtype: TiDataType,
                  concrete_tensor_shape: Tuple[int, ...],
-                 field_manager: FieldManager,
+                 field_manager: Union[FieldManager, Callable, None],
                  fields_builder: ti.FieldsBuilder,
                  complex_dtype: bool,
                  requires_grad: bool,
@@ -377,7 +377,7 @@ class Seal:
     def __init__(self, dtype: Union[TiDataType, torch.dtype],
                  *dims: DimOption,
                  shape_calc: Optional[Union[Callable, DimensionCalculator]] = None,
-                 field_manager: Optional[FieldManager] = None,
+                 field_manager: Union[FieldManager, Callable, None] = None,
                  requires_grad: Optional[bool] = None,
                  name: Optional[str] = None):
         assert dtype is not None, "dtype must not be None"
@@ -406,7 +406,7 @@ class Seal:
         if self.complex_dtype:
             dtype = ti.f32 if dtype == torch.cfloat else ti.f64
         self.dtype: TiDataType = to_taichi_type(dtype) if dtype is not None else dtype
-        self.field_manager: FieldManager = field_manager
+        self.field_manager: Union[FieldManager, Callable, None] = field_manager
         self.batched: Optional[bool] = None
         self.name: str = name
         self.requires_grad: bool = requires_grad
