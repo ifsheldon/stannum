@@ -25,6 +25,7 @@ Please see [documentation](https://fengliang.io/stannum/).
 Code sample of `Tube`:
 
 ```python
+from stannum import Tube
 import taichi as ti
 import torch
 
